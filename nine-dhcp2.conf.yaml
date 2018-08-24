@@ -1,6 +1,6 @@
 netbox:
   api:
-    url: http://netbox:8001/api/
+    url: http://nine-dhcp2.docker/api/ # http://netbox:8001/api/
     token: 0123456789abcdef0123456789abcdef01234567
   cache:
     duration: 1h
@@ -21,9 +21,10 @@ daemon:
   listen_v4: # default: listen on all interfaces
     # if left empty, DHCPv4 is being disabled
     '*': # listen on all interfaces
-    - 67
-    eth0: # default: [ 67, 0.0.0.0:67 ]
-    - 67 # broadcast
+    - broadcast:67 # port 67
+    - broadcast:6767 # port 67
+    eth0: # default: [ broadcast:67, 0.0.0.0:67 ]
+    - broadcast:67 # broadcast on 67
     - 0.0.0.0:67 # unicast on all IPv4 on that interface
     - 1.2.3.4:67 # unicast on just that IPv4
   listen_v6: # default: listen on all interfaces

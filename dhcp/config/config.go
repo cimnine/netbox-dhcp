@@ -1,4 +1,4 @@
-package dhcp
+package config
 
 type DaemonConfig struct {
 	Daemonize bool

@@ -1,7 +1,7 @@
 package models
 
 type NetboxObject struct {
-	ID          string `json:"id"`
+	ID          uint64 `json:"id"`
 	Tags        Tags   `json:"tags"`
 	Created     string `json:"created"`
 	LastUpdated string `json:"last_updated"`
@@ -17,8 +17,14 @@ type EmbeddedNetboxObject struct {
 	URL string `json:"url"`
 }
 
+type NetboxList struct {
+	Count    uint64 `json:"count"`
+	Next     string `json:"next"`
+	Previous string `json:"previous"`
+}
+
 type Status struct {
-	Value int    `json:"value"`
+	Value uint   `json:"value"`
 	Label string `json:"label"`
 }
 

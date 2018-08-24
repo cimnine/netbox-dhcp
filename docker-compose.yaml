@@ -55,7 +55,9 @@ services:
   redis:
     image: redis:4-alpine
     command:
-    - redis-server --appendonly yes
+    - redis-server
+    - --appendonly
+    - 'yes'
     volumes:
     - netbox-redis-data:/data
 volumes:

@@ -6,19 +6,10 @@ DHCP Daemon which uses Netbox as datasource.
 
 This follows the [go modules][go-modules] introduced with [Go 1.11][go-1.11].
 
+**You will need Go 1.11 or newer!**
+
 [go-modules]: https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more
 [go-1.11]: https://golang.org/doc/go1.11
-
-### Development Environment
-
-Until GO 1.11 is released, make sure you install a 1.11 pre-release to `$HOME/go/go/go1.11rc1`.
-Then, before compiling on the terminal, run:
-
-```bash
-source env.sh
-```
-
-This will set a different `GOROOT`, adjust your `PATH` and define `GO111MODULE=on` for this session.
 
 ### Local Test Environment
 

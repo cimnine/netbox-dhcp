@@ -2,9 +2,9 @@ package configuration
 
 import (
 	"github.com/ninech/nine-dhcp2/cache"
-	"github.com/ninech/nine-dhcp2/dhcp"
+	"github.com/ninech/nine-dhcp2/dhcp/config"
 	"github.com/ninech/nine-dhcp2/netbox"
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
 )
@@ -12,8 +12,8 @@ import (
 type Configuration struct {
 	Netbox netbox.NetboxConfig
 	Cache  cache.CacheConfig
-	Daemon dhcp.DaemonConfig
-	DHCP   dhcp.DHCPConfig `yaml:"dhcp"`
+	Daemon config.DaemonConfig
+	DHCP   config.DHCPConfig `yaml:"dhcp"`
 }
 
 func ReadConfig(filename string) (conf Configuration, err error) {

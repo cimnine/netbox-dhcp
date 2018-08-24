@@ -14,9 +14,22 @@ type Site struct {
 	Status   Status `json:"status"`
 }
 
+type SiteList struct {
+	NetboxList
+	Sites []Site `json:"results"`
+}
+
+func (Site) Resolve() string {
+	return "dcim/sites/"
+}
+
 type Device struct {
 	NetboxObject
 	Name string `json:"name"`
+}
+
+func (Device) Resolve() string {
+	return "dcim/devices/"
 }
 
 type EmbeddedVirtualMachine EmbeddedDevice
@@ -29,6 +42,10 @@ type EmbeddedDevice struct {
 type Interface struct {
 	NetboxObject
 	Name string `json:"name"`
+}
+
+func (Interface) Resolve() string {
+	return "dcim/interfaces/"
 }
 
 type EmbeddedInterface struct {
