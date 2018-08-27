@@ -8,4 +8,6 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/testify v1.2.2 // indirect
+	golang.org/x/net v0.0.0-20180826012351-8a410e7b638d // indirect
+	gopkg.in/resty.v1 v1.9.0
 )

@@ -2,8 +2,8 @@ package netbox
 
 import (
 	"fmt"
-	"github.com/go-resty/resty"
 	"github.com/ninech/nine-dhcp2/netbox/models"
+	"gopkg.in/resty.v1"
 	"log"
 	"strconv"
 )
