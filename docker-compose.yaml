@@ -1,4 +1,4 @@
-version: '3'
+version: '2.4'
 services:
   app:
     build: .
@@ -8,6 +8,9 @@ services:
   # Uncomment for fast development
   #    volumes:
   #    - ./nine-dhcp2-linux:/app/nine-dhcp2-linux:ro
+    networks:
+    - default
+    - dhcp
 
   # support services
   netbox: &netbox
@@ -33,6 +36,8 @@ services:
     - /opt/netbox/netbox/manage.py
     command:
     - rqworker
+    networks:
+    - default
   nginx:
     command: nginx -c /etc/netbox-nginx/nginx.conf
     image: nginx:1.15-alpine
@@ -60,6 +65,31 @@ services:
     - 'yes'
     volumes:
     - netbox-redis-data:/data
+
+  # test container
+  dhclient: &dhclient
+    build:
+      context: .
+      dockerfile: dhclient.Dockerfile
+    command:
+    - dhclient
+    - --version
+    networks:
+    - dhcp
+  dhcpcd:
+    <<: *dhclient
+    command:
+    - dhcpcd
+    - --version
+networks:
+  dhcp:
+    internal: true
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+      - subnet: 172.29.0.0/16
+      - subnet: fd9e:0366:0282::/8
 volumes:
   netbox-static-files:
     driver: local

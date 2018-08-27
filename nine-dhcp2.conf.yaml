@@ -1,6 +1,7 @@
 netbox:
   api:
-    url: http://nine-dhcp2.docker/api/ # http://netbox:8001/api/
+#    url: http://nine-dhcp2.docker/api/
+    url: http://netbox:8001/api/
     token: 0123456789abcdef0123456789abcdef01234567
   cache:
     duration: 1h
