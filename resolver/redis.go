@@ -15,9 +15,11 @@ func (r Redis) AcknowledgeV4ByID(duid, iaid, ip string) (ClientInfoV4, error) {
 }
 
 func (r Redis) ReserveV4ByMAC(mac string, info ClientInfoV4) error {
-	panic("implement me")
+	// TODO
+	return nil
 }
 
 func (r Redis) ReserveV4ByID(duid, iaid string, info ClientInfoV4) error {
-	panic("implement me")
+	// TODO
+	return nil
 }
