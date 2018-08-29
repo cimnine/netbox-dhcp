@@ -8,7 +8,9 @@ import (
 	"strconv"
 )
 
-type Resolver interface {
+var emptyParams = map[string]string{}
+
+type EntityResolver interface {
 	Resolve() string
 }
 
@@ -17,9 +19,9 @@ type Client struct {
 }
 
 func (c *Client) GetSites() (res []models.Site, err error) {
-	response, err := c.request(map[string]string{}).
+	response, err := c.request(emptyParams).
 		SetResult(models.SiteList{}).
-		Get(c.resolve(models.Site{}))
+		Get(c.resolve(models.SiteList{}))
 
 	return response.Result().(*models.SiteList).Sites, err
 }
@@ -31,7 +33,7 @@ func (c *Client) request(params map[string]string) *resty.Request {
 		SetHeader("Authentication", fmt.Sprintf("Token %s", c.Config.API.Token))
 }
 
-func (c Client) resolve(r Resolver) string {
+func (c Client) resolve(r EntityResolver) string {
 	return c.Config.API.URL + r.Resolve()
 }
 
@@ -63,4 +65,38 @@ func (c *Client) CheckSites() bool {
 	}
 
 	return allGood
+}
+
+func (c *Client) FindInterfacesByMac(mac string) (res []models.Interface, err error) {
+	// TODO normalize mac address
+
+	// TODO check if resty sanitizes input
+
+	response, err := c.request(map[string]string{
+		"mac_address": mac,
+	}).SetResult(models.InterfaceList{}).
+		Get(c.resolve(models.InterfaceList{}))
+
+	if err != nil {
+		log.Printf("An error occurred while receiving interfaces for MAC '%s'", mac)
+		return []models.Interface{}, err
+	}
+
+	return response.Result().(*models.InterfaceList).Interfaces, err
+}
+
+func (c *Client) FindIPAddressesByInterfaceID(ifaceID uint64) ([]models.IP, error) {
+	// TODO check if resty sanitizes input
+
+	response, err := c.request(map[string]string{
+		"interface_id": strconv.FormatUint(ifaceID, 10),
+	}).SetResult(models.IPList{}).
+		Get(c.resolve(models.IPList{}))
+
+	if err != nil {
+		log.Printf("An error occurred while receiving ips for interface '%s'", ifaceID)
+		return []models.IP{}, err
+	}
+
+	return response.Result().(*models.IPList).IPs, nil
 }

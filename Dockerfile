@@ -18,7 +18,8 @@ RUN CGO_ENABLED=0 \
 # runner
 FROM alpine:latest
 RUN apk --no-cache add \
-    ca-certificates
+    ca-certificates \
+    tcpdump
 WORKDIR /app/
 
 COPY nine-dhcp2.conf.yaml ./

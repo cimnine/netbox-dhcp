@@ -2,15 +2,20 @@ package main
 
 import (
 	"fmt"
+	"github.com/go-redis/redis"
+
+	redisCache "github.com/ninech/nine-dhcp2/cache/redis"
 	"github.com/ninech/nine-dhcp2/configuration"
 	"github.com/ninech/nine-dhcp2/dhcp"
 	"github.com/ninech/nine-dhcp2/netbox"
+	"github.com/ninech/nine-dhcp2/resolver"
 	"log"
 	"os"
 	"os/signal"
 )
 
 var netboxClient netbox.Client
+var redisClient redis.Client
 var stopped chan bool
 
 func main() {
@@ -23,13 +28,19 @@ func main() {
 		log.Fatalln("Unable to load configuration.", configFilename, err)
 	}
 
+	redisClient = *redisCache.NewClient(&config.Cache.Redis)
 	netboxClient = netbox.Client{Config: &config.Netbox}
 
 	if !netboxClient.CheckSites() {
 		log.Fatalln("The config contains inactive or missing sites. Please check the log.")
 	}
 
-	d := dhcp.NewDaemon(&config)
+	netboxOfferer := resolver.Netbox{Client: &netboxClient}
+	redisCachingRequester := resolver.Redis{Client: &redisClient}
+
+	requester := resolver.CachingResolver{Source: netboxOfferer, Cache: redisCachingRequester}
+
+	d := dhcp.NewDaemon(&config, requester)
 	setupShutdownHandler(d.Shutdown)
 
 	d.Start()
