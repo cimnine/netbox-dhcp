@@ -1,6 +1,73 @@
 # nine-dhcp2
 
-DHCP Daemon which uses Netbox as datasource.
+DHCP Daemon which uses Netbox as datasource and Redis as (local) cache.
+
+## Roadmap
+
+Main Goal: **Make sure it behaves correctly according to RFC2131 & RFC2132.**
+
+Further Goals:
+
+* Serve DHCPv4 through MAC address lookup.
+* Serve DHCPv4 through DUID/IAID lookup as described in RFC4361.
+* Serve DHCPv6 through MAC address lookup as described in RFC6939.
+* Serve DHCPv6 through DUID/IAID lookup.
+* Add Prometheus metrics endpoint.
+* OpenSource it
+
+## Configuration
+
+For now, look at the `nine-dhcp2.conf.yaml` file. It has comments describing all the supported features.
+
+## DHCP
+
+### Features
+
+* Needs to be written
+
+### Limitations
+
+* Does not yet support DHCPv4 with client id
+* Does not yet support DHCPv6
+
+## Netbox Assumptions
+
+* There are sites in Netbox. An nine-dhcp2 instance is only responsible for certain sites.
+* If interfaces have MAC addresses, then they have not more than one IP assigned.
+* If devices have MAC addresses, then they have a primary IP defined.
+
+### Config Context
+
+nine-dhcp2 recognizes the following additional information provided to a Netbox Device via Config Contexts:
+
+```json
+{
+    "dhcp": {
+        "dns_name": "nine.ch",
+        "dns_servers": [
+            "1.1.1.1",
+            "1.0.0.1"
+        ],
+        "ntp_servers": [],
+        "routers": [
+            "172.24.0.1",
+            "172.24.0.254"
+        ]
+    }
+}
+```
+
+This information takes precedence over what is provided in the nine-dhcp2 config file.
+
+## Redis
+
+Offered IPs and Leased IPs are added to redis.
+If you want persistence, make sure you run Redis in a persisted mode.
+
+nine-dhcp2 uses the following keys to keep track of IPs:
+
+* `v4;{mac};{ip}`
+* `v4;{duid};{iaid};{ip}`
 
 ## Development
 
