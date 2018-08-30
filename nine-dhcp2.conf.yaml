@@ -12,9 +12,10 @@ netbox:
 cache:
   type: redis
   redis:
-    host: redis
+#    host: redis
+    host: localhost
     port: 6379
-    password: 6379
+    password:
     database: 1
 
 daemon:
@@ -44,9 +45,10 @@ daemon:
       reply_from: ::1 # optional unicast address
 
 dhcp:
-  lease_timeout: 1d
+  reservation_timeout: 1m # default: 1m
+  lease_timeout: 1d # default: 6h
   t1_timeout: 0.5d # default: 50%
-  t2_timeout: 0.8d # default: 80%
+  t2_timeout: 0.8d # default: 75%
   default_options:
     domain_name: nine.ch
     dns_servers:

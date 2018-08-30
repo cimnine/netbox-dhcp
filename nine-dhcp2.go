@@ -36,7 +36,7 @@ func main() {
 	}
 
 	netboxOfferer := resolver.Netbox{Client: &netboxClient}
-	redisCachingRequester := resolver.Redis{Client: &redisClient}
+	redisCachingRequester := resolver.Redis{Client: &redisClient, DHCPConfig: &config.DHCP}
 
 	requester := resolver.CachingResolver{Source: netboxOfferer, Cache: redisCachingRequester}
 

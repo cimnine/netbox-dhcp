@@ -1,7 +1,6 @@
 package resolver
 
 import (
-	"errors"
 	"fmt"
 	"github.com/ninech/nine-dhcp2/netbox"
 	"github.com/ninech/nine-dhcp2/netbox/models"
@@ -12,7 +11,9 @@ type Netbox struct {
 	Client *netbox.Client
 }
 
-func (n Netbox) OfferV4ByMAC(mac string) (info ClientInfoV4, err error) {
+func (n Netbox) OfferV4ByMAC(mac string) (info *ClientInfoV4, err error) {
+	info = &ClientInfoV4{}
+
 	iface, err := n.findInterfacesByMAC(mac)
 	if err != nil {
 		log.Printf("Can't find interface for MAC '%s'.", mac)
@@ -85,6 +86,6 @@ func (n Netbox) findIPAddressByInterfaceID(ifaceID uint64) (ip models.IP, err er
 	return ips[0], nil
 }
 
-func (n Netbox) OfferV4ByID(duid, iaid string) (ClientInfoV4, error) {
-	return ClientInfoV4{}, errors.New("not yet implemented")
+func (n Netbox) OfferV4ByID(duid, iaid string) (*ClientInfoV4, error) {
+	panic("not implemented")
 }

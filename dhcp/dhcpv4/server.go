@@ -129,50 +129,49 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
 	}
 
-	clientHwAddr := make([]byte, 16)
-	for i, hwAddrByte := range dhcpDiscover.ClientHwAddr() {
-		clientHwAddr[i] = hwAddrByte
-	}
-
-	response, err := dhcpv4.New()
+	dhcpOffer, err := s.prepareAnswer(dhcpDiscover, clientInfo, dhcpv4.MessageTypeOffer)
 	if err != nil {
-		log.Print("Can't create response.", err)
+		return
 	}
 
-	response.SetOpcode(dhcpv4.OpcodeBootReply)
-	response.SetTransactionID(dhcpDiscover.TransactionID())
-	response.SetClientIPAddr(net.IPv4zero)
-	response.SetYourIPAddr(clientInfo.IPAddr)
-	response.SetFlags(dhcpDiscover.Flags())
-	response.SetGatewayIPAddr(dhcpDiscover.GatewayIPAddr())
-	response.SetClientHwAddr(clientHwAddr)
-	response.SetServerHostName([]byte(s.ifaceConfig.ReplyHostname))
-	response.SetBootFileName([]byte(clientInfo.BootFileName))
+	dstAddr := determineDstAddr(dhcpDiscover, dhcpOffer)
 
-	response.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: 600})
-	response.AddOption(&dhcpv4.OptHostName{HostName: clientInfo.Options.HostName})
-	response.AddOption(&dhcpv4.OptDomainName{DomainName: clientInfo.Options.DomainName})
-	response.AddOption(&dhcpv4.OptDomainNameServer{NameServers: clientInfo.Options.DomainNameServers})
-	response.AddOption(&dhcpv4.OptRouter{Routers: clientInfo.Options.Routers})
-	response.AddOption(&dhcpv4.OptNTPServers{NTPServers: clientInfo.Options.TimeServers})
-	response.AddOption(&dhcpv4.OptMessageType{MessageType: dhcpv4.MessageTypeOffer})
-	response.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.ifaceConfig.ReplyFromAddress()})
-	// TODO maybe add T1 & T2
+	log.Printf("Sending DHCPOFFER to '%s' from '%s'", dstAddr.String(), s.outConn.LocalAddr().String())
 
-	response.SetServerIPAddr(net.ParseIP(s.ifaceConfig.ReplyFrom))
+	s.outConn.WriteToUDP(dhcpOffer.ToBytes(), &dstAddr)
+
+	return
+}
+
+func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4) net.UDPAddr {
+	/*
+		 From the RFC2131, Page 23:
+
+		 If the 'giaddr' field in a DHCP message from a client is non-zero,
+	   the server sends any return messages to the 'DHCP server' port on the
+	   BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
+	   field is zero and the 'ciaddr' field is nonzero, then the server
+	   unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
+	   If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
+	   set, then the server broadcasts DHCPOFFER and DHCPACK messages to
+	   0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
+	   'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
+	   messages to the client's hardware address and 'yiaddr' address.  In
+	   all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
+	   messages to 0xffffffff.
+	*/
 
 	var dstIP net.IP
-
-	if dhcpDiscover.GatewayIPAddr() != nil && // 'giaddr' is non-zero
-		!dhcpDiscover.GatewayIPAddr().Equal(net.IPv4zero) {
+	if in.GatewayIPAddr() != nil && // 'giaddr' is non-zero
+		!in.GatewayIPAddr().Equal(net.IPv4zero) {
 		log.Println("'giaddr' is non-zero")
-		dstIP = dhcpDiscover.GatewayIPAddr()
-		response.SetBroadcast()
-	} else if dhcpDiscover.ClientIPAddr() != nil && // 'giaddr' is zero, 'ciaddr' is non-zero
-		!dhcpDiscover.ClientIPAddr().Equal(net.IPv4zero) {
+		dstIP = in.GatewayIPAddr()
+		out.SetBroadcast()
+	} else if in.ClientIPAddr() != nil && // 'giaddr' is zero, 'ciaddr' is non-zero
+		!in.ClientIPAddr().Equal(net.IPv4zero) {
 		log.Println("'giaddr' is zero, 'ciaddr' is non-zero")
-		dstIP = dhcpDiscover.ClientIPAddr()
-	} else if dhcpDiscover.IsBroadcast() { // 'giaddr' and 'ciaddr' are zero, but broadcast flag
+		dstIP = in.ClientIPAddr()
+	} else if in.IsBroadcast() { // 'giaddr' and 'ciaddr' are zero, but broadcast flag
 		log.Println("'giaddr' and 'ciaddr' are zero, but broadcast flag")
 		dstIP = net.IPv4bcast
 	} else {
@@ -190,30 +189,32 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.
 		IP:   dstIP,
 		Port: dhcpv4.ClientPort,
 	}
-
-	log.Printf("Sending DHCPOFFER to '%s' from '%s'", dstAddr.String(), s.outConn.LocalAddr().String())
-
-	s.outConn.WriteToUDP(response.ToBytes(), &dstAddr)
-
-	return
+	return dstAddr
 }
 
-func (s *ServerV4) replyToRequest(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.UDPAddr) {
-	mac := dhcpDiscover.ClientHwAddrToString()
+func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, sourceAddr *net.UDPAddr) {
+	mac := dhcpRequest.ClientHwAddrToString()
 
-	requestedIPOptions := dhcpDiscover.GetOption(dhcpv4.OptionRequestedIPAddress)
+	requestedIPOptions := dhcpRequest.GetOption(dhcpv4.OptionRequestedIPAddress)
 	if len(requestedIPOptions) != 1 {
 		log.Printf("%d IPs requested instead of one", len(requestedIPOptions))
 		return
 	}
 
-	requestedIP := requestedIPOptions[0].String()
+	optRequestedIPAddress, err := dhcpv4.ParseOptRequestedIPAddress(requestedIPOptions[0].ToBytes())
+	if err != nil {
+		log.Printf("Can't decypher the requested IP from '%s'", requestedIPOptions[0].String())
+	}
 
-	log.Printf("DHCPREQUEST for IP '%s' from MAC '%s'", requestedIP, mac)
+	requestedIP := optRequestedIPAddress.RequestedAddr.String()
+	log.Printf("DHCPREQUEST requesting IP '%s' for MAC '%s'", requestedIP, mac)
 
-	if dhcpDiscover.ServerIPAddr() != nil &&
-		!dhcpDiscover.ServerIPAddr().Equal(net.ParseIP(s.address)) {
-		log.Printf("DHCPREQUEST is not for us but for '%s'.", dhcpDiscover.ServerIPAddr().String())
+	serverIPAddr := dhcpRequest.ServerIPAddr()
+	if serverIPAddr != nil &&
+		!serverIPAddr.Equal(net.IPv4zero) &&
+		!serverIPAddr.Equal(net.IPv4bcast) &&
+		!serverIPAddr.Equal(net.ParseIP(s.address)) {
+		log.Printf("DHCPREQUEST is not for us but for '%s'.", serverIPAddr.String())
 		return
 	}
 
@@ -222,7 +223,62 @@ func (s *ServerV4) replyToRequest(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.U
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
 	}
 
-	log.Printf("Accepting '%s'", clientInfo.IPAddr)
+	dhcpACK, err := s.prepareAnswer(dhcpRequest, clientInfo, dhcpv4.MessageTypeAck)
+	if err != nil {
+		return
+	}
 
-	// TODO implement rest
+	dstAddr := determineDstAddr(dhcpRequest, dhcpACK)
+
+	log.Printf("Sending DHCPACK to '%s' from '%s'", dstAddr.String(), s.outConn.LocalAddr().String())
+
+	s.outConn.WriteToUDP(dhcpACK.ToBytes(), &dstAddr)
+
+	return
+}
+
+func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientInfoV4, messageType dhcpv4.MessageType) (*dhcpv4.DHCPv4, error) {
+	out, err := dhcpv4.New()
+	if err != nil {
+		log.Print("Can't create response.", err)
+		return nil, err
+	}
+
+	hwAddr := in.ClientHwAddr()
+	out.SetOpcode(dhcpv4.OpcodeBootReply)
+	out.SetHopCount(0)
+	out.SetTransactionID(in.TransactionID())
+	out.SetNumSeconds(0)
+	out.SetClientIPAddr(net.IPv4zero)
+	out.SetYourIPAddr(clientInfo.IPAddr)
+	out.SetServerIPAddr(net.IPv4zero)
+	out.SetFlags(in.Flags())
+	out.SetGatewayIPAddr(in.GatewayIPAddr())
+	out.SetClientHwAddr(hwAddr[:])
+	out.SetServerHostName([]byte(s.ifaceConfig.ReplyHostname))
+	out.SetBootFileName([]byte(clientInfo.BootFileName))
+	// TODO remove hardcoded value
+	// TODO maybe add T1 & T2
+
+	out.AddOption(&dhcpv4.OptMessageType{MessageType: messageType})
+	out.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: 600})
+	out.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.ifaceConfig.ReplyFromAddress()})
+
+	if clientInfo.Options.HostName != "" {
+		out.AddOption(&dhcpv4.OptHostName{HostName: clientInfo.Options.HostName})
+	}
+	if clientInfo.Options.DomainName != "" {
+		out.AddOption(&dhcpv4.OptDomainName{DomainName: clientInfo.Options.DomainName})
+	}
+	if len(clientInfo.Options.DomainNameServers) > 0 {
+		out.AddOption(&dhcpv4.OptDomainNameServer{NameServers: clientInfo.Options.DomainNameServers})
+	}
+	if len(clientInfo.Options.Routers) > 0 {
+		out.AddOption(&dhcpv4.OptRouter{Routers: clientInfo.Options.Routers})
+	}
+	if len(clientInfo.Options.NTPServers) > 0 {
+		out.AddOption(&dhcpv4.OptNTPServers{NTPServers: clientInfo.Options.NTPServers})
+	}
+
+	return out, nil
 }
