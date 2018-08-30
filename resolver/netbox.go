@@ -31,16 +31,11 @@ func (n Netbox) OfferV4ByMAC(mac string) (info *ClientInfoV4, err error) {
 		return
 	}
 
-	ones, bits := net.Mask.Size()
-	if bits == 0 {
-		return info, fmt.Errorf("the netmask '%s' is skewed", net.Mask.String())
-	}
-
 	// TODO get further info from the device, to which the interface belongs
 	// e.g. DNS server, router, etc.
 
 	info.IPAddr = address
-	info.PrefixLen = uint8(ones)
+	info.IPMask = net.Mask
 
 	return
 }

@@ -107,21 +107,21 @@ func (r Redis) calculateTimeouts(info *ClientInfoV4) {
 		}
 	}
 
-	if info.Timeouts.T2 == 0 {
+	if info.Timeouts.T2RenewalTime == 0 {
 		d, err := time.ParseDuration(r.DHCPConfig.T2Timeout)
 		if err != nil {
-			info.Timeouts.T2 = info.Timeouts.Lease / 2
+			info.Timeouts.T2RenewalTime = info.Timeouts.Lease / 2
 		} else {
-			info.Timeouts.T2 = d
+			info.Timeouts.T2RenewalTime = d
 		}
 	}
 
-	if info.Timeouts.T1 == 0 {
+	if info.Timeouts.T1RenewalTime == 0 {
 		d, err := time.ParseDuration(r.DHCPConfig.T1Timeout)
 		if err != nil {
-			info.Timeouts.T1 = info.Timeouts.T2 / 2
+			info.Timeouts.T1RenewalTime = info.Timeouts.T2RenewalTime / 2
 		} else {
-			info.Timeouts.T1 = d
+			info.Timeouts.T1RenewalTime = d
 		}
 	}
 }

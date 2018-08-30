@@ -31,13 +31,13 @@ type Resolver interface {
 
 type ClientInfoV4 struct {
 	IPAddr       net.IP
-	PrefixLen    uint8
+	IPMask       net.IPMask
 	BootFileName string
 	Timeouts     struct {
-		Reservation time.Duration
-		Lease       time.Duration
-		T1          time.Duration
-		T2          time.Duration
+		Reservation   time.Duration
+		Lease         time.Duration
+		T1RenewalTime time.Duration
+		T2RenewalTime time.Duration
 	}
 	Options struct {
 		HostName          string

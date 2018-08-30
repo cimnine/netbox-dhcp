@@ -6,6 +6,7 @@ import (
 	"github.com/ninech/nine-dhcp2/dhcp/config"
 	"github.com/ninech/nine-dhcp2/resolver"
 	"log"
+	"math"
 	"net"
 )
 
@@ -145,20 +146,20 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.
 
 func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4) net.UDPAddr {
 	/*
-		 From the RFC2131, Page 23:
+			 From the RFC2131, Page 23:
 
-		 If the 'giaddr' field in a DHCP message from a client is non-zero,
-	   the server sends any return messages to the 'DHCP server' port on the
-	   BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
-	   field is zero and the 'ciaddr' field is nonzero, then the server
-	   unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
-	   If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
-	   set, then the server broadcasts DHCPOFFER and DHCPACK messages to
-	   0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
-	   'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
-	   messages to the client's hardware address and 'yiaddr' address.  In
-	   all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
-	   messages to 0xffffffff.
+			 If the 'giaddr' field in a DHCP message from a client is non-zero,
+		   the server sends any return messages to the 'DHCP server' port on the
+		   BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
+		   field is zero and the 'ciaddr' field is nonzero, then the server
+		   unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
+		   If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
+		   set, then the server broadcasts DHCPOFFER and DHCPACK messages to
+		   0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
+		   'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
+		   messages to the client's hardware address and 'yiaddr' address.  In
+		   all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
+		   messages to 0xffffffff.
 	*/
 
 	var dstIP net.IP
@@ -257,13 +258,23 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientI
 	out.SetClientHwAddr(hwAddr[:])
 	out.SetServerHostName([]byte(s.ifaceConfig.ReplyHostname))
 	out.SetBootFileName([]byte(clientInfo.BootFileName))
-	// TODO remove hardcoded value
+
+	leaseTime := safeConvertToUint32(clientInfo.Timeouts.Lease.Nanoseconds())
+
 	// TODO maybe add T1 & T2
-
 	out.AddOption(&dhcpv4.OptMessageType{MessageType: messageType})
-	out.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: 600})
+	out.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: leaseTime})
 	out.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.ifaceConfig.ReplyFromAddress()})
+	out.AddOption(&dhcpv4.OptSubnetMask{SubnetMask: clientInfo.IPMask})
 
+	if clientInfo.Timeouts.T1RenewalTime > 0 {
+		renewalTime := safeConvertToUint32(clientInfo.Timeouts.T1RenewalTime.Nanoseconds())
+		out.AddOption(&OptRenewalTime{RenewalTime: renewalTime})
+	}
+	if clientInfo.Timeouts.T2RenewalTime > 0 {
+		rebindingTime := safeConvertToUint32(clientInfo.Timeouts.T2RenewalTime.Nanoseconds())
+		out.AddOption(&OptRebindingTime{RebindingTime: rebindingTime})
+	}
 	if clientInfo.Options.HostName != "" {
 		out.AddOption(&dhcpv4.OptHostName{HostName: clientInfo.Options.HostName})
 	}
@@ -281,4 +292,14 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientI
 	}
 
 	return out, nil
+}
+
+func safeConvertToUint32(int64Value int64) uint32 {
+	if int64Value > math.MaxUint32 {
+		return math.MaxUint32
+	} else if int64Value < 0 {
+		return 0
+	} else {
+		return uint32(int64Value)
+	}
 }
