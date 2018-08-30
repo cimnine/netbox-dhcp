@@ -84,8 +84,10 @@ type EmbeddedInterface struct {
 }
 
 type DHCPConfigContext struct {
-	Routers    []string `json:"routers"`
-	DomainName string   `json:"domain_name"`
-	DNSServers []string `json:"dns_servers"`
-	NTPServers []string `json:"ntp_servers"`
+	Routers      []string `json:"routers"`
+	DomainName   string   `json:"domain_name"`
+	DNSServers   []string `json:"dns_servers"`
+	NTPServers   []string `json:"ntp_servers"`
+	NextServer   string   `json:"next_server"`
+	BootFileName string   `json:"bootfile_name"`
 }

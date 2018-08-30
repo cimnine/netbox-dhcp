@@ -6,22 +6,19 @@ import (
 )
 
 type Offerer interface {
-	OfferV4ByMAC(mac string) (*ClientInfoV4, error)
-	OfferV4ByID(duid, iaid string) (*ClientInfoV4, error)
-
-	//OfferV6ByMac(mac string) (ClientInfoV6, error)
-	//OfferV6ById(duid string, iuid string) (ClientInfoV6, error)
+	OfferV4ByMAC(clientInfo *ClientInfoV4, mac string) error
+	OfferV4ByID(clientInfo *ClientInfoV4, duid, iaid string) error
 }
 
 type Acknowledger interface {
-	AcknowledgeV4ByMAC(mac, ip string) (*ClientInfoV4, error)
-	AcknowledgeV4ByID(duid, iaid, ip string) (*ClientInfoV4, error)
+	AcknowledgeV4ByMAC(clientInfo *ClientInfoV4, mac, ip string) error
+	AcknowledgeV4ByID(clientInfo *ClientInfoV4, duid, iaid, ip string) error
 }
 
 type CachingRequester interface {
 	Acknowledger
-	ReserveV4ByMAC(mac string, info *ClientInfoV4) error
-	ReserveV4ByID(duid, iaid string, info *ClientInfoV4) error
+	ReserveV4ByMAC(info *ClientInfoV4, mac string) error
+	ReserveV4ByID(info *ClientInfoV4, duid, iaid string) error
 }
 
 type Resolver interface {
@@ -32,12 +29,13 @@ type Resolver interface {
 type ClientInfoV4 struct {
 	IPAddr       net.IP
 	IPMask       net.IPMask
+	NextServer   net.IP
 	BootFileName string
 	Timeouts     struct {
-		Reservation   time.Duration
-		Lease         time.Duration
-		T1RenewalTime time.Duration
-		T2RenewalTime time.Duration
+		Reservation     time.Duration
+		Lease           time.Duration
+		T1RenewalTime   time.Duration
+		T2RebindingTime time.Duration
 	}
 	Options struct {
 		HostName          string

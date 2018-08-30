@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ninech/nine-dhcp2/netbox"
 	"github.com/ninech/nine-dhcp2/netbox/models"
+	"github.com/ninech/nine-dhcp2/util"
 	"log"
 	"net"
 )
@@ -12,48 +13,35 @@ type Netbox struct {
 	Client *netbox.Client
 }
 
-func (n Netbox) OfferV4ByMAC(mac string) (*ClientInfoV4, error) {
+func (n Netbox) OfferV4ByMAC(info *ClientInfoV4, mac string) error {
 	address, netmask, device, err := n.findByInterfaceMAC(mac)
-	if err != nil {
-		log.Printf("Can't find IP via Interface for MAC '%s'. Trying via Device.", mac)
+	if err == nil {
+		fillClientInfo(info, address, netmask, device)
+		return nil
 	}
+
+	log.Printf("Can't find IP via Interface for MAC '%s'. Trying via Device.", mac)
 
 	address, netmask, device, err = n.findByDeviceMAC(mac)
-	if err != nil {
-		log.Printf("Can't find IP via Device for MAC '%s'. Giving up.", mac)
-		return nil, fmt.Errorf("no result for MAC '%s' in Netbox", mac)
+	if err == nil {
+		fillClientInfo(info, address, netmask, device)
+		return nil
 	}
 
-	info := ClientInfoV4{
-		IPAddr: address,
-		IPMask: netmask,
-	}
-	info.Options.HostName = device.Name
-	info.Options.Routers = parseIP4s(device.ConfigContext.DHCP.Routers)
-	info.Options.DomainName = device.ConfigContext.DHCP.DomainName
-	info.Options.DomainNameServers = parseIP4s(device.ConfigContext.DHCP.DNSServers)
-	info.Options.NTPServers = parseIP4s(device.ConfigContext.DHCP.NTPServers)
-
-	return &info, nil
+	log.Printf("Can't find IP via Device for MAC '%s'. Giving up.", mac)
+	return fmt.Errorf("no result for MAC '%s' in Netbox", mac)
 }
 
-func parseIP4s(ipStrs []string) []net.IP {
-	ips := make([]net.IP, len(ipStrs))
-
-	for _, router := range ipStrs {
-		ip := net.ParseIP(router)
-		if ip == nil {
-			continue
-		}
-
-		ip4 := ip.To4()
-		if ip == nil {
-			continue
-		}
-
-		ips = append(ips, ip4)
-	}
-	return ips
+func fillClientInfo(info *ClientInfoV4, address net.IP, netmask net.IPMask, device models.Device) {
+	info.IPAddr = address
+	info.IPMask = netmask
+	info.BootFileName = device.ConfigContext.DHCP.BootFileName
+	info.NextServer = net.ParseIP(device.ConfigContext.DHCP.NextServer)
+	info.Options.HostName = device.Name
+	info.Options.Routers = util.ParseIP4s(device.ConfigContext.DHCP.Routers)
+	info.Options.DomainName = device.ConfigContext.DHCP.DomainName
+	info.Options.DomainNameServers = util.ParseIP4s(device.ConfigContext.DHCP.DNSServers)
+	info.Options.NTPServers = util.ParseIP4s(device.ConfigContext.DHCP.NTPServers)
 }
 
 func (n Netbox) findByDeviceMAC(mac string) (net.IP, net.IPMask, models.Device, error) {
@@ -66,8 +54,8 @@ func (n Netbox) findByDeviceMAC(mac string) (net.IP, net.IPMask, models.Device, 
 	}
 
 	if device.PrimaryIP4.ID == 0 { // empty object
-		log.Printf("The Device '%d' does not defined a primary IPv4.", device.ID)
-		return nil, nil, emptyDevice, err
+		log.Printf("The Device with ID %d does not defined a primary IPv4.", device.ID)
+		return nil, nil, emptyDevice, fmt.Errorf("device %d has no primary IPv4", device.ID)
 	}
 
 	address, network, err := device.PrimaryIP4.Address()
@@ -195,6 +183,6 @@ func (n Netbox) findDeviceByID(deviceID uint64) (device models.Device, err error
 	return *devicePtr, nil
 }
 
-func (n Netbox) OfferV4ByID(duid, iaid string) (*ClientInfoV4, error) {
-	panic("not implemented")
+func (n Netbox) OfferV4ByID(info *ClientInfoV4, duid, iaid string) error {
+	panic("please implement")
 }

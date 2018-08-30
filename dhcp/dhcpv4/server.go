@@ -5,8 +5,8 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/ninech/nine-dhcp2/dhcp/config"
 	"github.com/ninech/nine-dhcp2/resolver"
+	"github.com/ninech/nine-dhcp2/util"
 	"log"
-	"math"
 	"net"
 )
 
@@ -110,7 +110,7 @@ func (s *ServerV4) handlePacket(rawPackage []byte, sourceAddr *net.UDPAddr) {
 		log.Printf("Failed to parse DHCPv4 message from '%s'. Error: %s", sourceAddr, err)
 	}
 
-	log.Printf("DHCP message: %v", message)
+	log.Printf("DHCP message type: %v", message.GetOption(dhcpv4.OptionDHCPMessageType))
 	switch *message.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
 		s.replyToDiscover(message, sourceAddr)
@@ -125,7 +125,9 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.
 	mac := dhcpDiscover.ClientHwAddrToString()
 	log.Printf("DHCPDISCOVER for MAC '%s'", mac)
 
-	clientInfo, err := s.Resolver.OfferV4ByMAC(mac)
+	clientInfo := resolver.NewClientInfoV4(s.dhcpConfig)
+
+	err := s.Resolver.OfferV4ByMAC(clientInfo, mac)
 	if err != nil {
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
 	}
@@ -219,9 +221,12 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, sourceAddr *net.UD
 		return
 	}
 
-	clientInfo, err := s.Resolver.AcknowledgeV4ByMAC(mac, requestedIP)
+	clientInfo := resolver.NewClientInfoV4(s.dhcpConfig)
+
+	err = s.Resolver.AcknowledgeV4ByMAC(clientInfo, mac, requestedIP)
 	if err != nil {
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
+		return
 	}
 
 	dhcpACK, err := s.prepareAnswer(dhcpRequest, clientInfo, dhcpv4.MessageTypeAck)
@@ -245,6 +250,11 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientI
 		return nil, err
 	}
 
+	siaddr := net.IPv4zero
+	if clientInfo.NextServer != nil {
+		siaddr = clientInfo.NextServer
+	}
+
 	hwAddr := in.ClientHwAddr()
 	out.SetOpcode(dhcpv4.OpcodeBootReply)
 	out.SetHopCount(0)
@@ -252,27 +262,29 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientI
 	out.SetNumSeconds(0)
 	out.SetClientIPAddr(net.IPv4zero)
 	out.SetYourIPAddr(clientInfo.IPAddr)
-	out.SetServerIPAddr(net.IPv4zero)
+	out.SetServerIPAddr(siaddr)
 	out.SetFlags(in.Flags())
 	out.SetGatewayIPAddr(in.GatewayIPAddr())
 	out.SetClientHwAddr(hwAddr[:])
 	out.SetServerHostName([]byte(s.ifaceConfig.ReplyHostname))
-	out.SetBootFileName([]byte(clientInfo.BootFileName))
 
-	leaseTime := safeConvertToUint32(clientInfo.Timeouts.Lease.Nanoseconds())
-
-	// TODO maybe add T1 & T2
 	out.AddOption(&dhcpv4.OptMessageType{MessageType: messageType})
-	out.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: leaseTime})
 	out.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.ifaceConfig.ReplyFromAddress()})
 	out.AddOption(&dhcpv4.OptSubnetMask{SubnetMask: clientInfo.IPMask})
 
+	if clientInfo.Timeouts.Lease > 0 {
+		leaseTime := util.SafeConvertToUint32(clientInfo.Timeouts.Lease.Seconds())
+		log.Printf("Lease Time: %s -> %d", clientInfo.Timeouts.Lease.String(), leaseTime)
+		out.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: leaseTime})
+	}
 	if clientInfo.Timeouts.T1RenewalTime > 0 {
-		renewalTime := safeConvertToUint32(clientInfo.Timeouts.T1RenewalTime.Nanoseconds())
+		renewalTime := util.SafeConvertToUint32(clientInfo.Timeouts.T1RenewalTime.Seconds())
+		log.Printf("Renewal T1 Time: %s -> %d", clientInfo.Timeouts.T1RenewalTime.String(), renewalTime)
 		out.AddOption(&OptRenewalTime{RenewalTime: renewalTime})
 	}
-	if clientInfo.Timeouts.T2RenewalTime > 0 {
-		rebindingTime := safeConvertToUint32(clientInfo.Timeouts.T2RenewalTime.Nanoseconds())
+	if clientInfo.Timeouts.T2RebindingTime > 0 {
+		rebindingTime := util.SafeConvertToUint32(clientInfo.Timeouts.T2RebindingTime.Seconds())
+		log.Printf("Rebinding T2 Time: %s -> %d", clientInfo.Timeouts.T2RebindingTime.String(), rebindingTime)
 		out.AddOption(&OptRebindingTime{RebindingTime: rebindingTime})
 	}
 	if clientInfo.Options.HostName != "" {
@@ -290,16 +302,9 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientI
 	if len(clientInfo.Options.NTPServers) > 0 {
 		out.AddOption(&dhcpv4.OptNTPServers{NTPServers: clientInfo.Options.NTPServers})
 	}
+	if clientInfo.BootFileName != "" {
+		out.AddOption(&dhcpv4.OptBootfileName{BootfileName: []byte(clientInfo.BootFileName)})
+	}
 
 	return out, nil
-}
-
-func safeConvertToUint32(int64Value int64) uint32 {
-	if int64Value > math.MaxUint32 {
-		return math.MaxUint32
-	} else if int64Value < 0 {
-		return 0
-	} else {
-		return uint32(int64Value)
-	}
 }

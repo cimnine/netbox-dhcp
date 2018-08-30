@@ -16,7 +16,7 @@ cache:
     host: localhost
     port: 6379
     password:
-    database: 1
+    database: 0
 
 daemon:
   daemonize: false
@@ -49,7 +49,9 @@ dhcp:
   lease_timeout: 1d # default: 6h
   t1_timeout: 0.5d # default: 50%
   t2_timeout: 0.8d # default: 75%
-  default_options:
+  default_options: # leave an option empty to not send it
+    next_server: 1.2.3.4
+    bootfile_name: pxelinux.0
     domain_name: nine.ch
     dns_servers:
     - 1.1.1.1
@@ -57,8 +59,12 @@ dhcp:
     - 2606:4700:4700::1111
     - 2606:4700:4700::1001
     ntp_servers:
-    - ntp.metas.ch
+    - 1.2.3.4
+    - ntp.metas.ch # resolved by the dhcp server, sent as IP to the client
     - 0.ch.pool.ntp.org
     - 1.ch.pool.ntp.org
     - 2.ch.pool.ntp.org
     - 3.ch.pool.ntp.org
+    routers:
+    - 1.2.3.4
+    - 1.2.3.5

@@ -43,6 +43,8 @@ nine-dhcp2 recognizes the following additional information provided to a Netbox 
 ```json
 {
     "dhcp": {
+        "next_server": "127.0.0.1",
+        "bootfile_name": "pxelinux.0",
         "dns_name": "nine.ch",
         "dns_servers": [
             "1.1.1.1",
@@ -58,6 +60,7 @@ nine-dhcp2 recognizes the following additional information provided to a Netbox 
 ```
 
 This information takes precedence over what is provided in the nine-dhcp2 config file.
+All of the keys are optional.
 
 ## Redis
 

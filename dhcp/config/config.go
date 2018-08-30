@@ -8,9 +8,12 @@ type DHCPConfig struct {
 	T1Timeout          string `yaml:"t1_timeout"`
 	T2Timeout          string `yaml:"t2_timeout"`
 	DefaultOptions     struct {
-		DomainName string   `yaml:"domain_name"`
-		DNSServers []string `yaml:"dns_servers"`
-		NTPServers []string `yaml:"ntp_servers"`
+		NextServer        string   `yaml:"next_server"`
+		BootFileName      string   `yaml:"bootfile_name"`
+		DomainName        string   `yaml:"domain_name"`
+		DomainNameServers []string `yaml:"dns_servers"`
+		NTPServers        []string `yaml:"ntp_servers"`
+		Routers           []string `yaml:"routers"`
 	} `yaml:"default_options"`
 }
 
