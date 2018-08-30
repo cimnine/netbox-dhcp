@@ -1,7 +1,6 @@
 package models
 
 import (
-	"fmt"
 	"net"
 )
 
@@ -15,7 +14,7 @@ type Prefix struct {
 }
 
 func (p Prefix) Resolve() string {
-	return fmt.Sprintf("ipam/prefixes/%d", p.ID)
+	return "ipam/prefixes/{id}/"
 }
 
 func (ip Prefix) Prefix() (net.IP, *net.IPNet, error) {
@@ -49,7 +48,7 @@ type IP struct {
 }
 
 func (ip IP) Resolve() string {
-	return fmt.Sprintf("ipam/ip-addresses/%d", ip.ID)
+	return "ipam/ip-addresses/{id}/"
 }
 
 type IPList struct {
