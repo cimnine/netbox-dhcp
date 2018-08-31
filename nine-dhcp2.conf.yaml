@@ -24,25 +24,22 @@ daemon:
     level: debug
     path: sysout
   listen_v4: # if left empty, DHCPv4 is being disabled
-    255.255.255.255: # listen on all interfaces
-      reply_from: 172.29.0.1 # required for 0.0.0.0/255.255.255.255
+    enp0s3:
+      reply_from: 172.29.0.1 # default: an IPv4 configured on the interface
       reply_hostname: # optional, default empty
-#    172.29.0.1: # unicast only
-#      reply_from: # optional when unicast, defaults to the listening IP
-#      reply_hostname: localhost # optional
   listen_v6: # if left empty, DHCPv6 is being disabled
     '::0': # listen on all interfaces
       advertise_unicast: false
-      reply_from: ::1
+      reply_from: ::1 # mandatory because listening on all interfaces
     All_DHCP_Relay_Agents_and_Servers: # special term for the multicast address FF02::1:2
       advertise_unicast: true
-      reply_from: ::1
-    All_DHCP_Servers: # special term for the multicase address FF05::1:3
+      reply_from: ::1 # mandatory because listening on multicast
+    All_DHCP_Servers: # special term for the multicast address FF05::1:3
       advertise_unicast: true
-      reply_from: ::1
+      reply_from: ::1 # mandatory because listening on multicast
     '2a02::1':
       advertise_unicast: true
-      reply_from: ::1 # optional unicast address
+      reply_from: ::1 # optional, default is listening address
 
 dhcp:
   reservation_timeout: 1m # default: 1m

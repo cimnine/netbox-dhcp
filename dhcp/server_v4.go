@@ -13,123 +13,113 @@ import (
 )
 
 type ServerV4 struct {
-	Resolver    resolver.Resolver
-	dhcpConfig  *config.DHCPConfig
-	ifaceConfig *config.V4InterfaceConfig
-	inConn      *net.UDPConn
-	outConn     *net.UDPConn
-	broadcast   bool
-	address     string
-	shutdown    bool
+	Resolver          resolver.Resolver
+	dhcpConfig        *config.DHCPConfig
+	conn              *v4.DHCPConn
+	broadcast         bool
+	iface             net.Interface
+	shutdown          bool
+	replyFrom         net.IP
+	replyFromHostname string
 }
 
-func NewServerV4(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, address string, ifaceConfig *config.V4InterfaceConfig) (s ServerV4, err error) {
+func NewServerV4(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, iface net.Interface, ifaceConfig *config.V4InterfaceConfig) (s ServerV4, err error) {
 	s = ServerV4{
-		Resolver:    resolver,
-		dhcpConfig:  dhcpConfig,
-		address:     address,
-		ifaceConfig: ifaceConfig,
+		Resolver:          resolver,
+		dhcpConfig:        dhcpConfig,
+		iface:             iface,
+		replyFromHostname: ifaceConfig.ReplyHostname,
 	}
 
-	ipAddr := net.ParseIP(address)
-	if ipAddr == nil {
-		log.Printf("'%s' is not a valid listening IP address. Check the config.\n", address)
-		return s, errors.New("invalid IP")
+	replyFromAddress := ifaceConfig.ReplyFromAddress()
+	if net.IPv4zero.Equal(replyFromAddress) || net.IPv4bcast.Equal(replyFromAddress) {
+		ifaceAddrs, err := iface.Addrs()
+		if err != nil {
+			log.Printf("Can't determine replyFrom address: %s", err)
+			return s, err
+		}
+
+		found := false
+		for _, ifaceAddr := range ifaceAddrs {
+			ipAddr, ok := ifaceAddr.(*net.IPNet)
+			if !ok {
+				log.Printf("Unexpected ipAddr type: %v", ipAddr)
+				continue
+			}
+
+			ip4 := ipAddr.IP.To4()
+			if ip4 == nil {
+				log.Printf("IP is not IPv4: %s", ipAddr)
+				continue
+			}
+
+			replyFromAddress = ip4
+			found = true
+			break
+		}
+
+		if !found {
+			log.Printf("No replyFrom address found.")
+			return s, errors.New("no replyFrom address")
+		}
 	}
 
-	inAddr := net.UDPAddr{
-		Port: dhcpv4.ServerPort,
-		IP:   ipAddr,
-	}
+	s.replyFrom = replyFromAddress
 
-	inConn, err := net.ListenUDP("udp4", &inAddr)
+	conn, err := v4.ListenDHCPv4(iface, replyFromAddress)
 	if err != nil {
 		return s, err
 	}
 
-	s.inConn = inConn
-
-	if address == ifaceConfig.ReplyFrom || ifaceConfig.ReplyFrom == "" {
-		s.outConn = inConn
-		return s, nil
-	}
-
-	outIP := net.ParseIP(ifaceConfig.ReplyFrom)
-	if outIP == nil {
-		log.Printf("'%s' is not a valid reply IP address. Check the config.\n", ifaceConfig.ReplyFrom)
-		return s, errors.New("invalid IP")
-	}
-
-	outAddr := net.UDPAddr{
-		Port: dhcpv4.ServerPort,
-		IP:   outIP,
-	}
-
-	outConn, err := net.ListenUDP("udp4", &outAddr)
-	if err != nil {
-		return s, err
-	}
-
-	s.outConn = outConn
+	s.conn = conn
 
 	return s, nil
 }
 
 func (s *ServerV4) Start() {
-	buf := make([]byte, 1024)
-
-	log.Printf("Listening on on addr '%s' for packets.", s.address)
+	log.Printf("Listening on on iface '%s' for packets.", s.iface.Name)
 	for {
-		bytesReceived, sourceAddr, err := s.inConn.ReadFromUDP(buf)
+		dhcpPack, sourceIP, sourceMAC, err := s.conn.ReadFrom()
 
 		if s.shutdown {
 			break
 		}
 
 		if err != nil {
-			log.Println("Timeout while waiting for packet.", err)
+			log.Println("Failed to process a packet: ", err)
+			continue
 		}
 
-		if bytesReceived > 0 { // e.g. when the socket was closed
-			go s.handlePacket(buf[:bytesReceived], sourceAddr)
-		}
+		go s.handlePacket(dhcpPack, sourceIP, sourceMAC)
 	}
 }
 
 func (s *ServerV4) Stop() {
 	s.shutdown = true
-	s.inConn.Close()
+	s.conn.Close()
 }
 
-func (s *ServerV4) handlePacket(rawPackage []byte, sourceAddr *net.UDPAddr) {
-	log.Printf("Packet received (%d bytes)", len(rawPackage))
+func (s *ServerV4) handlePacket(dhcp dhcpv4.DHCPv4, srcIP net.IP, srcMAC net.HardwareAddr) {
+	log.Printf("sourceMAC: %s sourceIP: %s", srcMAC, srcIP)
 
-	// todo check if broadcast == true!
-	log.Printf("sourceAddr: %v", sourceAddr)
-
-	message, err := dhcpv4.FromBytes(rawPackage)
-	if err != nil {
-		log.Printf("Failed to parse DHCPv4 message from '%s'. Error: %s", sourceAddr, err)
-	}
-
-	log.Printf("DHCP message type: %v", message.MessageType().String())
-	switch *message.MessageType() {
+	log.Printf("DHCP message type: %v", dhcp.MessageType())
+	switch *dhcp.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
-		s.replyToDiscover(message)
+		s.replyToDiscover(&dhcp, &srcIP, &srcMAC)
 	case dhcpv4.MessageTypeRequest:
-		s.replyToRequest(message)
+		s.replyToRequest(&dhcp, &srcIP, &srcMAC)
 	case dhcpv4.MessageTypeDecline:
-		s.handleDecline(message)
+		s.handleDecline(&dhcp, &srcIP, &srcMAC)
 	case dhcpv4.MessageTypeRelease:
-		s.handleRelease(message)
+		s.handleRelease(&dhcp, &srcIP, &srcMAC)
 	case dhcpv4.MessageTypeInform:
-		s.replyToInform(message)
+		s.replyToInform(&dhcp, &srcIP, &srcMAC)
 	default:
-		log.Printf("Unknown message type: '%v'", message.MessageType())
+		log.Printf("Unknown message type: '%v'", dhcp.MessageType())
 	}
 }
 
-func (s *ServerV4) handleDecline(dhcpDecline *dhcpv4.DHCPv4) {
+func (s *ServerV4) handleDecline(dhcpDecline *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
 	mac, xid := getTransactionIDAndMAC(dhcpDecline)
 
 	requestedIPOptions := dhcpDecline.GetOption(dhcpv4.OptionRequestedIPAddress)
@@ -150,7 +140,7 @@ func (s *ServerV4) handleDecline(dhcpDecline *dhcpv4.DHCPv4) {
 	s.Resolver.DeclineV4ByMAC(xid, mac, requestedIP)
 }
 
-func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4) {
+func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
 	mac, xid := getTransactionIDAndMAC(dhcpRelease)
 
 	ip := dhcpRelease.ClientIPAddr()
@@ -170,16 +160,16 @@ func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4) {
 	s.Resolver.ReleaseV4ByMAC(xid, mac, ip4.String())
 }
 
-func (s *ServerV4) replyToInform(dhcpInform *dhcpv4.DHCPv4) {
+func (s *ServerV4) replyToInform(dhcpInform *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
 	mac := dhcpInform.ClientHwAddrToString()
 	log.Printf("DHCPINFORM for MAC '%s'", mac)
 
 	// TODO implement
 }
 
-func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4) {
+func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
 	mac, xid := getTransactionIDAndMAC(dhcpDiscover)
-	log.Printf("DHCPDISCOVER for MAC '%s' in transaction '%s", mac, xid)
+	log.Printf("DHCPDISCOVER for MAC '%s' in transaction '%s'", mac, xid)
 
 	clientInfo := resolver.NewClientInfoV4(s.dhcpConfig)
 
@@ -193,71 +183,19 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4) {
 		return
 	}
 
-	dstAddr := determineDstAddr(dhcpDiscover, dhcpOffer)
+	dstIP, dstMAC := determineDstAddr(dhcpDiscover, dhcpOffer, srcMAC)
 
-	log.Printf("Sending DHCPOFFER to '%s' from '%s'", dstAddr.String(), s.outConn.LocalAddr().String())
+	log.Printf("Sending DHCPOFFER to '%s' ('%s') from '%s'", dstIP.String(), srcMAC, s.replyFrom)
 
-	s.outConn.WriteToUDP(dhcpOffer.ToBytes(), &dstAddr)
+	err = s.conn.WriteTo(*dhcpOffer, dstIP, dstMAC)
+	if err != nil {
+		log.Printf("Can't send DHCPOFFER to '%s' ('%s'): %s", dstIP.String(), srcMAC, err)
+	}
 
 	return
 }
 
-func getTransactionIDAndMAC(dhcpMsg *dhcpv4.DHCPv4) (string, string) {
-	mac := dhcpMsg.ClientHwAddrToString()
-	xid := strconv.FormatUint(uint64(dhcpMsg.TransactionID()), 16)
-	return mac, xid
-}
-
-func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4) net.UDPAddr {
-	/*
-			 From the RFC2131, Page 23:
-
-			 If the 'giaddr' field in a DHCP message from a client is non-zero,
-		   the server sends any return messages to the 'DHCP server' port on the
-		   BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
-		   field is zero and the 'ciaddr' field is nonzero, then the server
-		   unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
-		   If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
-		   set, then the server broadcasts DHCPOFFER and DHCPACK messages to
-		   0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
-		   'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
-		   messages to the client's hardware address and 'yiaddr' address.  In
-		   all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
-		   messages to 0xffffffff.
-	*/
-
-	var dstIP net.IP
-	if in.GatewayIPAddr() != nil && // 'giaddr' is non-zero
-		!in.GatewayIPAddr().Equal(net.IPv4zero) {
-		log.Println("'giaddr' is non-zero")
-		dstIP = in.GatewayIPAddr()
-		out.SetBroadcast()
-	} else if in.ClientIPAddr() != nil && // 'giaddr' is zero, 'ciaddr' is non-zero
-		!in.ClientIPAddr().Equal(net.IPv4zero) {
-		log.Println("'giaddr' is zero, 'ciaddr' is non-zero")
-		dstIP = in.ClientIPAddr()
-	} else if in.IsBroadcast() { // 'giaddr' and 'ciaddr' are zero, but broadcast flag
-		log.Println("'giaddr' and 'ciaddr' are zero, but broadcast flag")
-		dstIP = net.IPv4bcast
-	} else {
-		log.Println("unicast therefore")
-		// TODO implement unicast to MAC
-		// Must avoid ARP (because client does not have IP yet)
-		// Therefore must use a raw socket
-		//dstIP = clientInfo.IPAddr
-
-		// send to broadcast for now
-		dstIP = net.IPv4bcast
-	}
-
-	dstAddr := net.UDPAddr{
-		IP:   dstIP,
-		Port: dhcpv4.ClientPort,
-	}
-	return dstAddr
-}
-
-func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4) {
+func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
 	mac, xid := getTransactionIDAndMAC(dhcpRequest)
 
 	requestedIPOptions := dhcpRequest.GetOption(dhcpv4.OptionRequestedIPAddress)
@@ -278,7 +216,7 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4) {
 	if serverIPAddr != nil &&
 		!serverIPAddr.Equal(net.IPv4zero) &&
 		!serverIPAddr.Equal(net.IPv4bcast) &&
-		!serverIPAddr.Equal(net.ParseIP(s.address)) {
+		!serverIPAddr.Equal(s.replyFrom) {
 		log.Printf("DHCPREQUEST is not for us but for '%s'.", serverIPAddr.String())
 		return
 	}
@@ -296,13 +234,60 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4) {
 		return
 	}
 
-	dstAddr := determineDstAddr(dhcpRequest, dhcpACK)
+	dstIP, dstMAC := determineDstAddr(dhcpRequest, dhcpACK, srcMAC)
 
-	log.Printf("Sending DHCPACK to '%s' from '%s'", dstAddr.String(), s.outConn.LocalAddr().String())
+	log.Printf("Sending DHCPACK to '%s' from '%s'", dstIP.String(), s.replyFrom)
 
-	s.outConn.WriteToUDP(dhcpACK.ToBytes(), &dstAddr)
+	err = s.conn.WriteTo(*dhcpACK, dstIP, dstMAC)
+	if err != nil {
+		log.Printf("Can't send DHCPOFFER to '%s' ('%s'): %s", dstIP.String(), srcMAC, err)
+	}
 
 	return
+}
+
+func getTransactionIDAndMAC(dhcpMsg *dhcpv4.DHCPv4) (string, string) {
+	mac := dhcpMsg.ClientHwAddrToString()
+	xid := strconv.FormatUint(uint64(dhcpMsg.TransactionID()), 16)
+	return mac, xid
+}
+
+func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4, srcMAC *net.HardwareAddr) (net.IP, net.HardwareAddr) {
+	/*
+			 From the RFC2131, Page 23:
+
+			 If the 'giaddr' field in a DHCP message from a client is non-zero,
+		   the server sends any return messages to the 'DHCP server' port on the
+		   BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
+		   field is zero and the 'ciaddr' field is nonzero, then the server
+		   unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
+		   If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
+		   set, then the server broadcasts DHCPOFFER and DHCPACK messages to
+		   0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
+		   'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
+		   messages to the client's hardware address and 'yiaddr' address.  In
+		   all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
+		   messages to 0xffffffff.
+	*/
+
+	if in.GatewayIPAddr() != nil && // 'giaddr' is non-zero
+		!in.GatewayIPAddr().Equal(net.IPv4zero) {
+		out.SetBroadcast()
+
+		// TODO srcMAC should be resolved using ARP
+		return in.GatewayIPAddr(), *srcMAC
+	} else if in.ClientIPAddr() != nil && // 'giaddr' is zero, 'ciaddr' is non-zero
+		!in.ClientIPAddr().Equal(net.IPv4zero) {
+
+		// TODO srcMAC should be resolved using ARP
+		return in.ClientIPAddr(), *srcMAC
+	} else if in.IsBroadcast() { // 'giaddr' and 'ciaddr' are zero, but broadcast flag
+		return net.IPv4bcast, net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	} else {
+		// Must avoid ARP (because client does not have IP yet)
+		addr := out.ClientHwAddr()
+		return out.YourIPAddr(), net.HardwareAddr(addr[:6])
+	}
 }
 
 func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *v4.ClientInfoV4, messageType dhcpv4.MessageType) (*dhcpv4.DHCPv4, error) {
@@ -328,10 +313,10 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *v4.ClientInfoV4,
 	out.SetFlags(in.Flags())
 	out.SetGatewayIPAddr(in.GatewayIPAddr())
 	out.SetClientHwAddr(hwAddr[:])
-	out.SetServerHostName([]byte(s.ifaceConfig.ReplyHostname))
+	out.SetServerHostName([]byte(s.replyFromHostname))
 
 	out.AddOption(&dhcpv4.OptMessageType{MessageType: messageType})
-	out.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.ifaceConfig.ReplyFromAddress()})
+	out.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.replyFrom})
 	out.AddOption(&dhcpv4.OptSubnetMask{SubnetMask: clientInfo.IPMask})
 
 	if clientInfo.Timeouts.Lease > 0 {

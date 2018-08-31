@@ -4,13 +4,14 @@ import (
 	"github.com/ninech/nine-dhcp2/configuration"
 	"github.com/ninech/nine-dhcp2/resolver"
 	"log"
+	"net"
 )
 
 type Daemon struct {
 	Configuration *configuration.Configuration
 
 	dhcpv4Servers map[string]*ServerV4
-	//dhcpv6Servers map[string]*dhcpv6.ServerV6
+	//dhcpv6Servers map[string]*ServerV6
 }
 
 func NewDaemon(config *configuration.Configuration, res resolver.Resolver) Daemon {
@@ -19,14 +20,19 @@ func NewDaemon(config *configuration.Configuration, res resolver.Resolver) Daemo
 		dhcpv4Servers: make(map[string]*ServerV4),
 	}
 
-	for addr, ifaceConfig := range config.Daemon.ListenV4 {
-		server, err := NewServerV4(&config.DHCP, res, addr, &ifaceConfig)
+	for ifaceString, ifaceConfig := range config.Daemon.ListenV4 {
+		iface, err := net.InterfaceByName(ifaceString)
 		if err != nil {
-			log.Printf("Can't listen on addr '%s' because of %s\n", addr, err)
+			log.Printf("Can't find iface '%s' because of %s", ifaceString, err)
+		}
+
+		server, err := NewServerV4(&config.DHCP, res, *iface, &ifaceConfig)
+		if err != nil {
+			log.Printf("Can't listen on iface '%s' because of %s", ifaceString, err)
 			continue
 		}
 
-		d.dhcpv4Servers[addr] = &server
+		d.dhcpv4Servers[ifaceString] = &server
 	}
 
 	return d
