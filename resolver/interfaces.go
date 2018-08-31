@@ -1,47 +1,32 @@
 package resolver
 
 import (
-	"net"
-	"time"
+	"github.com/ninech/nine-dhcp2/dhcp/v4"
 )
 
 type Offerer interface {
-	OfferV4ByMAC(clientInfo *ClientInfoV4, mac string) error
-	OfferV4ByID(clientInfo *ClientInfoV4, duid, iaid string) error
+	OfferV4ByMAC(clientInfo *v4.ClientInfoV4, xid, mac string) error
+	OfferV4ByID(clientInfo *v4.ClientInfoV4, xid, duid, iaid string) error
 }
 
 type Acknowledger interface {
-	AcknowledgeV4ByMAC(clientInfo *ClientInfoV4, mac, ip string) error
-	AcknowledgeV4ByID(clientInfo *ClientInfoV4, duid, iaid, ip string) error
+	AcknowledgeV4ByMAC(clientInfo *v4.ClientInfoV4, xid, mac, ip string) error
+	AcknowledgeV4ByID(clientInfo *v4.ClientInfoV4, xid, duid, iaid, ip string) error
 }
 
-type CachingRequester interface {
-	Acknowledger
-	ReserveV4ByMAC(info *ClientInfoV4, mac string) error
-	ReserveV4ByID(info *ClientInfoV4, duid, iaid string) error
+type Decliner interface {
+	DeclineV4ByMAC(xid, mac, ip string) error
+	DeclineV4ByID(xid, duid, iaid, ip string) error
+}
+
+type Releaser interface {
+	ReleaseV4ByMAC(xid, mac, ip string) error
+	ReleaseV4ByID(xid, duid, iaid, ip string) error
 }
 
 type Resolver interface {
 	Offerer
 	Acknowledger
-}
-
-type ClientInfoV4 struct {
-	IPAddr       net.IP
-	IPMask       net.IPMask
-	NextServer   net.IP
-	BootFileName string
-	Timeouts     struct {
-		Reservation     time.Duration
-		Lease           time.Duration
-		T1RenewalTime   time.Duration
-		T2RebindingTime time.Duration
-	}
-	Options struct {
-		HostName          string
-		DomainName        string
-		Routers           []net.IP
-		DomainNameServers []net.IP
-		NTPServers        []net.IP
-	}
+	Releaser
+	Decliner
 }

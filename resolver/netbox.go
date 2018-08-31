@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"fmt"
+	"github.com/ninech/nine-dhcp2/dhcp/v4"
 	"github.com/ninech/nine-dhcp2/netbox"
 	"github.com/ninech/nine-dhcp2/netbox/models"
 	"github.com/ninech/nine-dhcp2/util"
@@ -13,7 +14,7 @@ type Netbox struct {
 	Client *netbox.Client
 }
 
-func (n Netbox) OfferV4ByMAC(info *ClientInfoV4, mac string) error {
+func (n Netbox) OfferV4ByMAC(info *v4.ClientInfoV4, transactionID, mac string) error {
 	address, netmask, device, err := n.findByInterfaceMAC(mac)
 	if err == nil {
 		fillClientInfo(info, address, netmask, device)
@@ -32,7 +33,11 @@ func (n Netbox) OfferV4ByMAC(info *ClientInfoV4, mac string) error {
 	return fmt.Errorf("no result for MAC '%s' in Netbox", mac)
 }
 
-func fillClientInfo(info *ClientInfoV4, address net.IP, netmask net.IPMask, device models.Device) {
+func (n Netbox) OfferV4ByID(info *v4.ClientInfoV4, transactionID, duid, iaid string) error {
+	panic("please implement")
+}
+
+func fillClientInfo(info *v4.ClientInfoV4, address net.IP, netmask net.IPMask, device models.Device) {
 	info.IPAddr = address
 	info.IPMask = netmask
 	info.BootFileName = device.ConfigContext.DHCP.BootFileName
@@ -181,8 +186,4 @@ func (n Netbox) findDeviceByID(deviceID uint64) (device models.Device, err error
 	}
 
 	return *devicePtr, nil
-}
-
-func (n Netbox) OfferV4ByID(info *ClientInfoV4, duid, iaid string) error {
-	panic("please implement")
 }

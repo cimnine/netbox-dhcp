@@ -1,13 +1,15 @@
-package dhcpv4
+package dhcp
 
 import (
 	"errors"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/ninech/nine-dhcp2/dhcp/config"
+	"github.com/ninech/nine-dhcp2/dhcp/v4"
 	"github.com/ninech/nine-dhcp2/resolver"
 	"github.com/ninech/nine-dhcp2/util"
 	"log"
 	"net"
+	"strconv"
 )
 
 type ServerV4 struct {
@@ -21,7 +23,7 @@ type ServerV4 struct {
 	shutdown    bool
 }
 
-func NewServer(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, address string, ifaceConfig *config.V4InterfaceConfig) (s ServerV4, err error) {
+func NewServerV4(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, address string, ifaceConfig *config.V4InterfaceConfig) (s ServerV4, err error) {
 	s = ServerV4{
 		Resolver:    resolver,
 		dhcpConfig:  dhcpConfig,
@@ -31,7 +33,7 @@ func NewServer(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, addres
 
 	ipAddr := net.ParseIP(address)
 	if ipAddr == nil {
-		log.Printf("'%s' is not a valid IP address. Check the config.\n", address)
+		log.Printf("'%s' is not a valid listening IP address. Check the config.\n", address)
 		return s, errors.New("invalid IP")
 	}
 
@@ -47,14 +49,14 @@ func NewServer(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, addres
 
 	s.inConn = inConn
 
-	if address == ifaceConfig.ReplyFrom {
+	if address == ifaceConfig.ReplyFrom || ifaceConfig.ReplyFrom == "" {
 		s.outConn = inConn
 		return s, nil
 	}
 
 	outIP := net.ParseIP(ifaceConfig.ReplyFrom)
 	if outIP == nil {
-		log.Printf("'%s' is not a valid IP address. Check the config.\n", ifaceConfig.ReplyFrom)
+		log.Printf("'%s' is not a valid reply IP address. Check the config.\n", ifaceConfig.ReplyFrom)
 		return s, errors.New("invalid IP")
 	}
 
@@ -110,24 +112,78 @@ func (s *ServerV4) handlePacket(rawPackage []byte, sourceAddr *net.UDPAddr) {
 		log.Printf("Failed to parse DHCPv4 message from '%s'. Error: %s", sourceAddr, err)
 	}
 
-	log.Printf("DHCP message type: %v", message.GetOption(dhcpv4.OptionDHCPMessageType))
+	log.Printf("DHCP message type: %v", message.MessageType().String())
 	switch *message.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
-		s.replyToDiscover(message, sourceAddr)
+		s.replyToDiscover(message)
 	case dhcpv4.MessageTypeRequest:
-		s.replyToRequest(message, sourceAddr)
+		s.replyToRequest(message)
+	case dhcpv4.MessageTypeDecline:
+		s.handleDecline(message)
+	case dhcpv4.MessageTypeRelease:
+		s.handleRelease(message)
+	case dhcpv4.MessageTypeInform:
+		s.replyToInform(message)
 	default:
 		log.Printf("Unknown message type: '%v'", message.MessageType())
 	}
 }
 
-func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.UDPAddr) {
-	mac := dhcpDiscover.ClientHwAddrToString()
-	log.Printf("DHCPDISCOVER for MAC '%s'", mac)
+func (s *ServerV4) handleDecline(dhcpDecline *dhcpv4.DHCPv4) {
+	mac, xid := getTransactionIDAndMAC(dhcpDecline)
+
+	requestedIPOptions := dhcpDecline.GetOption(dhcpv4.OptionRequestedIPAddress)
+	if len(requestedIPOptions) != 1 {
+		log.Printf("%d IPs requested instead of one", len(requestedIPOptions))
+		return
+	}
+
+	optRequestedIPAddress, err := dhcpv4.ParseOptRequestedIPAddress(requestedIPOptions[0].ToBytes())
+	if err != nil {
+		log.Printf("Can't decypher the requested IP from '%s'", requestedIPOptions[0].String())
+	}
+
+	requestedIP := optRequestedIPAddress.RequestedAddr.String()
+
+	log.Printf("DHCPDECLINE from MAC '%s' and IP '%s' in transaction '%s'", mac, requestedIP, xid)
+
+	s.Resolver.DeclineV4ByMAC(xid, mac, requestedIP)
+}
+
+func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4) {
+	mac, xid := getTransactionIDAndMAC(dhcpRelease)
+
+	ip := dhcpRelease.ClientIPAddr()
+	if ip == nil {
+		log.Printf("DHCPRELEASE from MAC '%s' with no client IP", mac)
+		return
+	}
+
+	ip4 := ip.To4()
+	if ip4 == nil || net.IPv4zero.Equal(ip4) || net.IPv4bcast.Equal(ip4) {
+		log.Printf("DHCPRELEASE from MAC '%s' with invalid client IP '%s'", mac, ip)
+		return
+	}
+
+	log.Printf("DHCPRELEASE from MAC '%s' and IP '%s' in transaction '%s'", mac, ip4, xid)
+
+	s.Resolver.ReleaseV4ByMAC(xid, mac, ip4.String())
+}
+
+func (s *ServerV4) replyToInform(dhcpInform *dhcpv4.DHCPv4) {
+	mac := dhcpInform.ClientHwAddrToString()
+	log.Printf("DHCPINFORM for MAC '%s'", mac)
+
+	// TODO implement
+}
+
+func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4) {
+	mac, xid := getTransactionIDAndMAC(dhcpDiscover)
+	log.Printf("DHCPDISCOVER for MAC '%s' in transaction '%s", mac, xid)
 
 	clientInfo := resolver.NewClientInfoV4(s.dhcpConfig)
 
-	err := s.Resolver.OfferV4ByMAC(clientInfo, mac)
+	err := s.Resolver.OfferV4ByMAC(clientInfo, xid, mac)
 	if err != nil {
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
 	}
@@ -144,6 +200,12 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, sourceAddr *net.
 	s.outConn.WriteToUDP(dhcpOffer.ToBytes(), &dstAddr)
 
 	return
+}
+
+func getTransactionIDAndMAC(dhcpMsg *dhcpv4.DHCPv4) (string, string) {
+	mac := dhcpMsg.ClientHwAddrToString()
+	xid := strconv.FormatUint(uint64(dhcpMsg.TransactionID()), 16)
+	return mac, xid
 }
 
 func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4) net.UDPAddr {
@@ -195,8 +257,8 @@ func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4) net.UDPAddr {
 	return dstAddr
 }
 
-func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, sourceAddr *net.UDPAddr) {
-	mac := dhcpRequest.ClientHwAddrToString()
+func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4) {
+	mac, xid := getTransactionIDAndMAC(dhcpRequest)
 
 	requestedIPOptions := dhcpRequest.GetOption(dhcpv4.OptionRequestedIPAddress)
 	if len(requestedIPOptions) != 1 {
@@ -210,7 +272,7 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, sourceAddr *net.UD
 	}
 
 	requestedIP := optRequestedIPAddress.RequestedAddr.String()
-	log.Printf("DHCPREQUEST requesting IP '%s' for MAC '%s'", requestedIP, mac)
+	log.Printf("DHCPREQUEST requesting IP '%s' for MAC '%s' and transaction '%s'", requestedIP, mac, xid)
 
 	serverIPAddr := dhcpRequest.ServerIPAddr()
 	if serverIPAddr != nil &&
@@ -223,7 +285,7 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, sourceAddr *net.UD
 
 	clientInfo := resolver.NewClientInfoV4(s.dhcpConfig)
 
-	err = s.Resolver.AcknowledgeV4ByMAC(clientInfo, mac, requestedIP)
+	err = s.Resolver.AcknowledgeV4ByMAC(clientInfo, xid, mac, requestedIP)
 	if err != nil {
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
 		return
@@ -243,7 +305,7 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, sourceAddr *net.UD
 	return
 }
 
-func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientInfoV4, messageType dhcpv4.MessageType) (*dhcpv4.DHCPv4, error) {
+func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *v4.ClientInfoV4, messageType dhcpv4.MessageType) (*dhcpv4.DHCPv4, error) {
 	out, err := dhcpv4.New()
 	if err != nil {
 		log.Print("Can't create response.", err)
@@ -280,12 +342,12 @@ func (s *ServerV4) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *resolver.ClientI
 	if clientInfo.Timeouts.T1RenewalTime > 0 {
 		renewalTime := util.SafeConvertToUint32(clientInfo.Timeouts.T1RenewalTime.Seconds())
 		log.Printf("Renewal T1 Time: %s -> %d", clientInfo.Timeouts.T1RenewalTime.String(), renewalTime)
-		out.AddOption(&OptRenewalTime{RenewalTime: renewalTime})
+		out.AddOption(&v4.OptRenewalTime{RenewalTime: renewalTime})
 	}
 	if clientInfo.Timeouts.T2RebindingTime > 0 {
 		rebindingTime := util.SafeConvertToUint32(clientInfo.Timeouts.T2RebindingTime.Seconds())
 		log.Printf("Rebinding T2 Time: %s -> %d", clientInfo.Timeouts.T2RebindingTime.String(), rebindingTime)
-		out.AddOption(&OptRebindingTime{RebindingTime: rebindingTime})
+		out.AddOption(&v4.OptRebindingTime{RebindingTime: rebindingTime})
 	}
 	if clientInfo.Options.HostName != "" {
 		out.AddOption(&dhcpv4.OptHostName{HostName: clientInfo.Options.HostName})

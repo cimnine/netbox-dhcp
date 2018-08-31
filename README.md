@@ -27,6 +27,7 @@ For now, look at the `nine-dhcp2.conf.yaml` file. It has comments describing all
 
 ### Limitations
 
+* Can't respond via unicast, except to relay agents
 * Does not yet support DHCPv4 with client id
 * Does not yet support DHCPv6
 

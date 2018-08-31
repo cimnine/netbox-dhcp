@@ -2,7 +2,6 @@ package dhcp
 
 import (
 	"github.com/ninech/nine-dhcp2/configuration"
-	"github.com/ninech/nine-dhcp2/dhcp/dhcpv4"
 	"github.com/ninech/nine-dhcp2/resolver"
 	"log"
 )
@@ -10,18 +9,18 @@ import (
 type Daemon struct {
 	Configuration *configuration.Configuration
 
-	dhcpv4Servers map[string]*dhcpv4.ServerV4
+	dhcpv4Servers map[string]*ServerV4
 	//dhcpv6Servers map[string]*dhcpv6.ServerV6
 }
 
 func NewDaemon(config *configuration.Configuration, res resolver.Resolver) Daemon {
 	d := Daemon{
 		Configuration: config,
-		dhcpv4Servers: make(map[string]*dhcpv4.ServerV4),
+		dhcpv4Servers: make(map[string]*ServerV4),
 	}
 
 	for addr, ifaceConfig := range config.Daemon.ListenV4 {
-		server, err := dhcpv4.NewServer(&config.DHCP, res, addr, &ifaceConfig)
+		server, err := NewServerV4(&config.DHCP, res, addr, &ifaceConfig)
 		if err != nil {
 			log.Printf("Can't listen on addr '%s' because of %s\n", addr, err)
 			continue

@@ -2,13 +2,14 @@ package resolver
 
 import (
 	"github.com/ninech/nine-dhcp2/dhcp/config"
+	"github.com/ninech/nine-dhcp2/dhcp/v4"
 	"github.com/ninech/nine-dhcp2/util"
 	"net"
 	"time"
 )
 
-func NewClientInfoV4(dhcpConfig *config.DHCPConfig) *ClientInfoV4 {
-	info := ClientInfoV4{
+func NewClientInfoV4(dhcpConfig *config.DHCPConfig) *v4.ClientInfoV4 {
+	info := v4.ClientInfoV4{
 		NextServer:   net.ParseIP(dhcpConfig.DefaultOptions.NextServer),
 		BootFileName: dhcpConfig.DefaultOptions.BootFileName,
 	}
