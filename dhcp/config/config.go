@@ -3,11 +3,11 @@ package config
 import "net"
 
 type DHCPConfig struct {
-	ReservationTimeout string `yaml:"reservation_timeout"`
-	LeaseTimeout       string `yaml:"lease_timeout"`
-	T1Timeout          string `yaml:"t1_timeout"`
-	T2Timeout          string `yaml:"t2_timeout"`
-	DefaultOptions     struct {
+	ReservationDuration string `yaml:"reservation_duration"`
+	LeaseDuration       string `yaml:"lease_duration"`
+	T1Duration          string `yaml:"t1_duration"`
+	T2Duration          string `yaml:"t2_duration"`
+	DefaultOptions      struct {
 		NextServer        string   `yaml:"next_server"`
 		BootFileName      string   `yaml:"bootfile_name"`
 		DomainName        string   `yaml:"domain_name"`

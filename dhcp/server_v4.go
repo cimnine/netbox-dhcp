@@ -100,9 +100,8 @@ func (s *ServerV4) Stop() {
 }
 
 func (s *ServerV4) handlePacket(dhcp dhcpv4.DHCPv4, srcIP net.IP, srcMAC net.HardwareAddr) {
-	log.Printf("sourceMAC: %s sourceIP: %s", srcMAC, srcIP)
+	log.Printf("DHCP message type: %v (sourceMAC: %s sourceIP: %s)", dhcp.MessageType(), srcMAC, srcIP)
 
-	log.Printf("DHCP message type: %v", dhcp.MessageType())
 	switch *dhcp.MessageType() {
 	case dhcpv4.MessageTypeDiscover:
 		s.replyToDiscover(&dhcp, &srcIP, &srcMAC)

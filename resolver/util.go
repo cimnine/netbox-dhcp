@@ -14,28 +14,28 @@ func NewClientInfoV4(dhcpConfig *config.DHCPConfig) *v4.ClientInfoV4 {
 		BootFileName: dhcpConfig.DefaultOptions.BootFileName,
 	}
 
-	d, err := time.ParseDuration(dhcpConfig.ReservationTimeout)
+	d, err := time.ParseDuration(dhcpConfig.ReservationDuration)
 	if err != nil {
 		info.Timeouts.Reservation = 1 * time.Minute
 	} else {
 		info.Timeouts.Reservation = d
 	}
 
-	d, err = time.ParseDuration(dhcpConfig.LeaseTimeout)
+	d, err = time.ParseDuration(dhcpConfig.LeaseDuration)
 	if err != nil {
 		info.Timeouts.Lease = 6 * time.Hour
 	} else {
 		info.Timeouts.Lease = d
 	}
 
-	d, err = time.ParseDuration(dhcpConfig.T2Timeout)
+	d, err = time.ParseDuration(dhcpConfig.T2Duration)
 	if err != nil {
 		info.Timeouts.T2RebindingTime = info.Timeouts.Lease / 2
 	} else {
 		info.Timeouts.T2RebindingTime = d
 	}
 
-	d, err = time.ParseDuration(dhcpConfig.T1Timeout)
+	d, err = time.ParseDuration(dhcpConfig.T1Duration)
 	if err != nil {
 		info.Timeouts.T1RenewalTime = info.Timeouts.T2RebindingTime / 2
 	} else {

@@ -6,9 +6,9 @@ DHCP Daemon which uses Netbox as datasource and Redis as (local) cache.
 
 Main Goal: **Make sure it behaves correctly according to RFC2131 & RFC2132.**
 
-Further Goals:
+Stretch Goals:
 
-* Serve DHCPv4 through MAC address lookup.
+* Serve DHCPv4 through MAC address lookup. ✔
 * Serve DHCPv4 through DUID/IAID lookup as described in RFC4361.
 * Serve DHCPv6 through MAC address lookup as described in RFC6939.
 * Serve DHCPv6 through DUID/IAID lookup.
@@ -23,17 +23,25 @@ For now, look at the `nine-dhcp2.conf.yaml` file. It has comments describing all
 
 ### Features
 
-* Needs to be written
+* Leases an IP assigned to a Interface based on a MAC lookup for interfaces in Netbox,
+  when the Interface has at least 1 IP
+* Leases the Device's primary IPv4 based on a MAC lookup for devices in Netbox
+* Keep track of leases in a Redis instance
+* Supports DHCP release and decline
 
 ### Limitations
 
-* Can't respond via unicast, except to relay agents
+* ⚠️ NO UNIT TESTS YET ⚠️ --> This is a proof of concept at this stage!
+
+* Responses to Unicast use the MAC the packet was received from instead of doing ARP lookup
 * Does not yet support DHCPv4 with client id
+* Does not yet implement DHCPINFORM messages
 * Does not yet support DHCPv6
+* Does not yet support IP pools
 
 ## Netbox Assumptions
 
-* There are sites in Netbox. An nine-dhcp2 instance is only responsible for certain sites.
+* There are sites in Netbox. A nine-dhcp2 instance is only responsible for certain sites.
 * If interfaces have MAC addresses, then they have not more than one IP assigned.
 * If devices have MAC addresses, then they have a primary IP defined.
 
@@ -44,6 +52,7 @@ nine-dhcp2 recognizes the following additional information provided to a Netbox 
 ```json
 {
     "dhcp": {
+        "lease_duration": "6h",
         "next_server": "127.0.0.1",
         "bootfile_name": "pxelinux.0",
         "dns_name": "nine.ch",

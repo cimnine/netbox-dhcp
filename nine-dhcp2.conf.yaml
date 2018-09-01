@@ -42,10 +42,10 @@ daemon:
       reply_from: ::1 # optional, default is listening address
 
 dhcp:
-  reservation_timeout: 1m # default: 1m
-  lease_timeout: 1d # default: 6h
-  t1_timeout: 0.5d # default: 50%
-  t2_timeout: 0.8d # default: 75%
+  reservation_duration: 1m # default: 1m
+  lease_duration: 1d # default: 6h
+  t1_duration: 0.5d # default: 50%
+  t2_duration: 0.8d # default: 75%
   default_options: # leave an option empty to not send it
     next_server: 1.2.3.4
     bootfile_name: pxelinux.0

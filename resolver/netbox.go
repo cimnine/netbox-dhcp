@@ -8,6 +8,7 @@ import (
 	"github.com/ninech/nine-dhcp2/util"
 	"log"
 	"net"
+	"time"
 )
 
 type Netbox struct {
@@ -40,13 +41,47 @@ func (n Netbox) OfferV4ByID(info *v4.ClientInfoV4, transactionID, duid, iaid str
 func fillClientInfo(info *v4.ClientInfoV4, address net.IP, netmask net.IPMask, device models.Device) {
 	info.IPAddr = address
 	info.IPMask = netmask
-	info.BootFileName = device.ConfigContext.DHCP.BootFileName
-	info.NextServer = net.ParseIP(device.ConfigContext.DHCP.NextServer)
-	info.Options.HostName = device.Name
-	info.Options.Routers = util.ParseIP4s(device.ConfigContext.DHCP.Routers)
-	info.Options.DomainName = device.ConfigContext.DHCP.DomainName
-	info.Options.DomainNameServers = util.ParseIP4s(device.ConfigContext.DHCP.DNSServers)
-	info.Options.NTPServers = util.ParseIP4s(device.ConfigContext.DHCP.NTPServers)
+
+	bootFileName := device.ConfigContext.DHCP.BootFileName
+	if bootFileName != "" {
+		info.BootFileName = bootFileName
+	}
+
+	nextServer := net.ParseIP(device.ConfigContext.DHCP.NextServer)
+	if nextServer != nil {
+		info.NextServer = nextServer
+	}
+
+	hostName := device.Name
+	if hostName != "" {
+		info.Options.HostName = hostName
+	}
+
+	routers := util.ParseIP4s(device.ConfigContext.DHCP.Routers)
+	if len(routers) > 0 {
+		info.Options.Routers = routers
+	}
+
+	domainName := device.ConfigContext.DHCP.DomainName
+	if domainName != "" {
+		info.Options.DomainName = domainName
+	}
+
+	dnsServers := util.ParseIP4s(device.ConfigContext.DHCP.DNSServers)
+	if len(dnsServers) > 0 {
+		info.Options.DomainNameServers = dnsServers
+	}
+
+	ntpServers := util.ParseIP4s(device.ConfigContext.DHCP.NTPServers)
+	if len(ntpServers) > 0 {
+		info.Options.NTPServers = ntpServers
+	}
+
+	leaseDurationStr := device.ConfigContext.DHCP.LeaseDuration
+	leaseDuration, err := time.ParseDuration(leaseDurationStr)
+	if err != nil && leaseDurationStr != "" {
+		info.Timeouts.Lease = leaseDuration
+	}
 }
 
 func (n Netbox) findByDeviceMAC(mac string) (net.IP, net.IPMask, models.Device, error) {
