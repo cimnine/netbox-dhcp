@@ -38,6 +38,7 @@ For now, look at the `nine-dhcp2.conf.yaml` file. It has comments describing all
 * Does not yet implement DHCPINFORM messages
 * Does not yet support DHCPv6
 * Does not yet support IP pools
+* Will not work on non-posix/linux/darwin systems because of the raw socket library
 
 ## Netbox Assumptions
 
@@ -100,6 +101,10 @@ The simplest way to develop the software locally is to use prepared Docker infra
 docker-compose build
 docker-compose up -d
 ```
+
+But this way is very limited. Currently I'm using two VMs that are on the same private network, and the code directory
+is mounted as a shared (read-only) directory.
+Eventually this could be turned into a Vagrant setup, so that anyone can quickly fire up a testbed.
 
 #### Fast Local Changes
 
