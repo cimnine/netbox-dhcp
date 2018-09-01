@@ -175,6 +175,7 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, srcIP *net.IP, s
 	err := s.Resolver.OfferV4ByMAC(clientInfo, xid, mac)
 	if err != nil {
 		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
+		return
 	}
 
 	dhcpOffer, err := s.prepareAnswer(dhcpDiscover, clientInfo, dhcpv4.MessageTypeOffer)

@@ -1,0 +1,64 @@
+netbox:
+  api:
+    url: http://netbox:8001/api/
+    token: 0123456789abcdef0123456789abcdef01234567
+  cache:
+    duration: 1h
+  sites:
+  - 1
+
+cache:
+  type: redis
+  redis:
+    host: redis
+    port: 6379
+    password:
+    database: 0
+
+daemon:
+  daemonize: false
+  log:
+    level: debug
+    path: sysout
+  listen_v4: # if left empty, DHCPv4 is being disabled
+    eth0:
+      reply_from: 172.29.0.1 # default: an IPv4 configured on the interface
+      reply_hostname: # optional, default empty
+  listen_v6: # if left empty, DHCPv6 is being disabled
+    '::0': # listen on all interfaces
+      advertise_unicast: false
+      reply_from: ::1 # mandatory because listening on all interfaces
+    All_DHCP_Relay_Agents_and_Servers: # special term for the multicast address FF02::1:2
+      advertise_unicast: true
+      reply_from: ::1 # mandatory because listening on multicast
+    All_DHCP_Servers: # special term for the multicast address FF05::1:3
+      advertise_unicast: true
+      reply_from: ::1 # mandatory because listening on multicast
+    '2a02::1':
+      advertise_unicast: true
+      reply_from: ::1 # optional, default is listening address
+
+dhcp:
+  reservation_duration: 1m # default: 1m
+  lease_duration: 1d # default: 6h
+  t1_duration: 0.5d # default: 50%
+  t2_duration: 0.8d # default: 75%
+  default_options: # leave an option empty to not send it
+    next_server: 1.2.3.4
+    bootfile_name: pxelinux.0
+    domain_name: nine.ch
+    dns_servers:
+    - 1.1.1.1
+    - 1.0.0.1
+    - 2606:4700:4700::1111
+    - 2606:4700:4700::1001
+    ntp_servers:
+    - 1.2.3.4
+    - ntp.metas.ch # resolved by the dhcp server, sent as IP to the client
+    - 0.ch.pool.ntp.org
+    - 1.ch.pool.ntp.org
+    - 2.ch.pool.ntp.org
+    - 3.ch.pool.ntp.org
+    routers:
+    - 1.2.3.4
+    - 1.2.3.5

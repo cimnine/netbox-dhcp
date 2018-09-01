@@ -79,8 +79,9 @@ If you want persistence, make sure you run Redis in a persisted mode.
 
 nine-dhcp2 uses the following keys to keep track of IPs:
 
-* `v4;{mac};{ip}`
-* `v4;{duid};{iaid};{ip}`
+* `v4;offer;{transactionid};{ip}`, TTL=reservation_duration
+* `v4;lease;{mac};{ip}`, TTL=lease_duration
+* `v4;lease;{duid};{iaid};{ip}`, TTL=lease_duration
 
 ## Development
 
