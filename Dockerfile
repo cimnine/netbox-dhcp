@@ -22,7 +22,7 @@ RUN apk --no-cache add \
     tcpdump
 WORKDIR /app/
 
-COPY nine-dhcp2.docker.conf.yaml ./nine-dhcp2.conf.yaml
+COPY nine-dhcp2.docker.conf.yaml /etc/nine-dhcp2.conf.yaml
 
 COPY --from=builder /src/nine-dhcp2-linux ./nine-dhcp2
 CMD ["./nine-dhcp2"]

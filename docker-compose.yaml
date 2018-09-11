@@ -6,7 +6,7 @@ services:
     - netbox
     - redis
     volumes:
-    - ./nine-dhcp2.docker.conf.yaml:/app/nine-dhcp2.conf.yaml:ro
+    - ./nine-dhcp2.docker.conf.yaml:/etc/nine-dhcp2.conf.yaml:ro
     # Uncomment for fast development
     #- ./nine-dhcp2-linux:/app/nine-dhcp2:ro
 #    networks:
