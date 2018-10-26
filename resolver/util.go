@@ -49,3 +49,7 @@ func NewClientInfoV4(dhcpConfig *config.DHCPConfig) *v4.ClientInfoV4 {
 
 	return &info
 }
+
+//func NewClientInfoV6(dhcpConfig *config.DHCPConfig) *v6.ClientInfoV6 {
+//
+//}

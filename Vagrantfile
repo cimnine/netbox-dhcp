@@ -131,6 +131,6 @@ Vagrant.configure('2') do |config|
       build-essential
     wget -nv "https://godeb.s3.amazonaws.com/godeb-amd64.tar.gz"
     tar xzf godeb-amd64.tar.gz
-    ./godeb install 1.11
+    ./godeb install 1.11.1
   SHELL
 end

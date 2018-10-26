@@ -113,7 +113,22 @@ func (c *Client) GetDeviceByID(id uint64) (res *models.Device, err error) {
 		Get(c.resolve(models.Device{}))
 
 	if err != nil {
-		log.Printf("An error occured while receiveing the Device '%d'", id)
+		log.Printf("An error occured while receiveing the Device ID '%d'", id)
+		return nil, err
+	}
+
+	return response.Result().(*models.Device), nil
+}
+
+func (c *Client) GetDeviceByDUID(duid string) (res *models.Device, err error) {
+	deviceDUIDField := c.Config.DeviceDUIDField
+	response, err := c.request().
+		SetPathParams(map[string]string{deviceDUIDField: duid}).
+		SetResult(models.Device{}).
+		Get(c.resolve(models.Device{}))
+
+	if err != nil {
+		log.Printf("An error occured while receiveing the Device by client id: '%s'='%s'", deviceDUIDField, duid)
 		return nil, err
 	}
 

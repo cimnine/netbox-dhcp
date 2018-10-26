@@ -1,18 +1,19 @@
 netbox:
   api:
-#    url: http://nine-dhcp2.docker/api/
-    #    url: http://netbox:8001/api/
     url: http://localhost:8080/api/
     token: 0123456789abcdef0123456789abcdef01234567
   cache:
     duration: 1h
+  # Usage: <field> or cf_<custom field name>
+  # they must be present on the Device model in Netbox
+  device_duid_field: cf_duid
   sites:
   - 1
 
 cache:
   type: redis
   redis:
-#    host: redis
+    #    host: redis
     host: localhost
     port: 6379
     password:
@@ -24,24 +25,23 @@ daemon:
     level: debug
     path: sysout
   listen_v4: # if left empty, DHCPv4 is being disabled
-    enp0s3:
+    enp0s8:
       reply_from: 172.29.0.1 # default: an IPv4 configured on the interface
       reply_hostname: # optional, default empty
   listen_v6: # if left empty, DHCPv6 is being disabled
-    '::0': # listen on all interfaces
-      advertise_unicast: false
-      reply_from: ::1 # mandatory because listening on all interfaces
-    All_DHCP_Relay_Agents_and_Servers: # special term for the multicast address FF02::1:2
+    enp0s8:
       advertise_unicast: true
-      reply_from: ::1 # mandatory because listening on multicast
-    All_DHCP_Servers: # special term for the multicast address FF05::1:3
-      advertise_unicast: true
-      reply_from: ::1 # mandatory because listening on multicast
-    '2a02::1':
-      advertise_unicast: true
-      reply_from: ::1 # optional, default is listening address
+      listen_to:
+      - All_DHCP_Relay_Agents_and_Servers # special term for the multicast address FF02::1:2
+      - All_DHCP_Servers # special term for the multicast address FF05::1:3
+      - ::0 # all incoming traffic
+      - 2a02::1
+      reply_from: 2a02::1 # mandatory when listening on multicast / ::0
 
 dhcp:
+  # server_uuid must not be empty. used as the server DUID.
+  # use https://duckduckgo.com/?q=uuid to generate a valid UUID.
+  server_uuid:
   reservation_duration: 1m # default: 1m
   lease_duration: 1d # default: 6h
   t1_duration: 0.5d # default: 50%

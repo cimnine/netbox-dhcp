@@ -11,40 +11,41 @@ import (
 )
 
 // This is the aprox. minimal size of a DHCP packet
-const MinPackSize = 5*4 + // minimal TCP header size
+const MinPackSize = 5*4 + // minimal IPv4 header size
 	2*4 + // minimal UDP header size
-	13*4 // minimal DHCP header size
+	13*4 // minimal DHCPv4 header size
 
-type DHCPConn struct {
+type DHCPV4Conn struct {
 	conn  *raw.Conn
 	iface net.Interface
 	laddr net.IP
 }
 
-func ListenDHCPv4(iface net.Interface, laddr net.IP) (*DHCPConn, error) {
+func ListenDHCPv4(iface net.Interface, laddr net.IP) (*DHCPV4Conn, error) {
 	conn, err := raw.ListenPacket(&iface, uint16(layers.EthernetTypeIPv4), &raw.Config{})
 
-	return &DHCPConn{conn: conn, iface: iface, laddr: laddr}, err
+	return &DHCPV4Conn{conn: conn, iface: iface, laddr: laddr}, err
 }
 
-func (c *DHCPConn) ReadFrom() (dhcpv4.DHCPv4, net.IP, net.HardwareAddr, error) {
+// ReadFrom returns the parsed packet, source IP, source MAC, error
+func (c *DHCPV4Conn) ReadFrom() (dhcpv4.DHCPv4, net.IP, net.HardwareAddr, error) {
 	eth, ip4, _, p, err := c.readFrom()
 	if err != nil {
 		return dhcpv4.DHCPv4{}, nil, nil, err
 	}
 
-	dstIP := ip4.DstIP
+	srcIP := ip4.SrcIP
 	srcMAC := eth.SrcMAC
 	pack, err := dhcpv4.FromBytes(p)
 
 	if err != nil {
-		return dhcpv4.DHCPv4{}, dstIP, srcMAC, err
+		return dhcpv4.DHCPv4{}, srcIP, srcMAC, err
 	}
 
-	return *pack, dstIP, srcMAC, nil
+	return *pack, srcIP, srcMAC, nil
 }
 
-func (c *DHCPConn) WriteTo(pack dhcpv4.DHCPv4, dstIP net.IP, dstMAC net.HardwareAddr) error {
+func (c *DHCPV4Conn) WriteTo(pack dhcpv4.DHCPv4, dstIP net.IP, dstMAC net.HardwareAddr) error {
 	serverIdentifier, ok := pack.GetOneOption(dhcpv4.OptionServerIdentifier).(*dhcpv4.OptServerIdentifier)
 	if !ok {
 		return errors.New("option ServerIdentifier undefined, illegal dhcp packet")
@@ -93,11 +94,11 @@ func (c *DHCPConn) WriteTo(pack dhcpv4.DHCPv4, dstIP net.IP, dstMAC net.Hardware
 	return err
 }
 
-func (c *DHCPConn) Close() error {
+func (c *DHCPV4Conn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *DHCPConn) readFrom() (*layers.Ethernet, *layers.IPv4, *layers.UDP, []byte, error) {
+func (c *DHCPV4Conn) readFrom() (*layers.Ethernet, *layers.IPv4, *layers.UDP, []byte, error) {
 	p := make([]byte, dhcpv4.MaxUDPReceivedPacketSize)
 
 	for {
@@ -143,7 +144,7 @@ func (c *DHCPConn) readFrom() (*layers.Ethernet, *layers.IPv4, *layers.UDP, []by
 	}
 }
 
-func (c *DHCPConn) writeTo(eth *layers.Ethernet, ip4 *layers.IPv4, udp *layers.UDP, payload []byte, addr *raw.Addr) (int, error) {
+func (c *DHCPV4Conn) writeTo(eth *layers.Ethernet, ip4 *layers.IPv4, udp *layers.UDP, payload []byte, addr *raw.Addr) (int, error) {
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		ComputeChecksums: true,

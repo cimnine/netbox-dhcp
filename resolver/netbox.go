@@ -15,6 +15,30 @@ type Netbox struct {
 	Client *netbox.Client
 }
 
+func (n Netbox) SolicitationV6(clientID, clientMAC string) error {
+	_, err := n.findDeviceByDUID(clientID)
+	if err == nil {
+		return nil
+	}
+
+	log.Printf("Can't find a Device for client ID '%s'. Trying with MAC.", clientID)
+
+	_, _, _, err = n.findByInterfaceMAC(clientMAC)
+	if err == nil {
+		return nil
+	}
+
+	log.Printf("Can't find an Interface for MAC '%s'. Trying via Device.", clientMAC)
+
+	_, _, _, err = n.findByDeviceMAC(clientMAC)
+	if err == nil {
+		return nil
+	}
+
+	log.Printf("Can't find an Interface or a Device for client ID '%s' / MAC '%s'. Giving up.", clientID, clientMAC)
+	return fmt.Errorf("no result for client ID '%s' / MAC '%s' in Netbox", clientID, clientMAC)
+}
+
 func (n Netbox) OfferV4ByMAC(info *v4.ClientInfoV4, transactionID, mac string) error {
 	address, netmask, device, err := n.findByInterfaceMAC(mac)
 	if err == nil {
@@ -22,7 +46,7 @@ func (n Netbox) OfferV4ByMAC(info *v4.ClientInfoV4, transactionID, mac string) e
 		return nil
 	}
 
-	log.Printf("Can't find IP via Interface for MAC '%s'. Trying via Device.", mac)
+	log.Printf("Can't find IPv4 via Interface for MAC '%s'. Trying via Device.", mac)
 
 	address, netmask, device, err = n.findByDeviceMAC(mac)
 	if err == nil {
@@ -30,7 +54,7 @@ func (n Netbox) OfferV4ByMAC(info *v4.ClientInfoV4, transactionID, mac string) e
 		return nil
 	}
 
-	log.Printf("Can't find IP via Device for MAC '%s'. Giving up.", mac)
+	log.Printf("Can't find IPv4 via Device for MAC '%s'. Giving up.", mac)
 	return fmt.Errorf("no result for MAC '%s' in Netbox", mac)
 }
 
@@ -207,17 +231,33 @@ func (n Netbox) findDeviceByMAC(mac string) (device models.Device, err error) {
 	return devices[0], nil
 }
 
-func (n Netbox) findDeviceByID(deviceID uint64) (device models.Device, err error) {
-	devicePtr, err := n.Client.GetDeviceByID(deviceID)
+func (n Netbox) findDeviceByID(id uint64) (device models.Device, err error) {
+	devicePtr, err := n.Client.GetDeviceByID(id)
 
 	if err != nil {
-		log.Printf("Error while receiving Device with ID '%d'", deviceID)
+		log.Printf("Error while receiving Device with ID '%d'", id)
 		return
 	}
 
 	if devicePtr == nil {
-		log.Printf("Device with ID %d not found", deviceID)
-		return device, fmt.Errorf("device %d not found", deviceID)
+		log.Printf("Device with ID '%d' not found", id)
+		return device, fmt.Errorf("device not found by ID '%d'", id)
+	}
+
+	return *devicePtr, nil
+}
+
+func (n Netbox) findDeviceByDUID(duid string) (device models.Device, err error) {
+	devicePtr, err := n.Client.GetDeviceByDUID(duid)
+
+	if err != nil {
+		log.Printf("Error while receiving Device with DUID '%s'", duid)
+		return
+	}
+
+	if devicePtr == nil {
+		log.Printf("Device with DUID '%s' not found", duid)
+		return device, fmt.Errorf("device not found by DUID '%s'", duid)
 	}
 
 	return *devicePtr, nil

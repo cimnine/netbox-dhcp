@@ -4,6 +4,10 @@ import (
 	"github.com/ninech/nine-dhcp2/dhcp/v4"
 )
 
+type Solicitationer interface {
+	SolicitationV6(clientID, clientMAC string) error
+}
+
 type Offerer interface {
 	OfferV4ByMAC(clientInfo *v4.ClientInfoV4, xid, mac string) error
 	OfferV4ByID(clientInfo *v4.ClientInfoV4, xid, duid, iaid string) error
@@ -29,4 +33,5 @@ type Resolver interface {
 	Acknowledger
 	Releaser
 	Decliner
+	Solicitationer
 }
