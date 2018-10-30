@@ -18,6 +18,8 @@ github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94 h1:l6+OWvahqPoGz
 github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94/go.mod h1:CfMdguCK66I5DAUJgGKyNz8aB6vO5dZzkm9Xep6WGvw=
 github.com/mdlayher/raw v0.0.0-20180612162323-1d2cec5bb8cc h1:W7a2+pjAfZnJqft/CICfjLwcOoBwODVRfoXLjhCLMR4=
 github.com/mdlayher/raw v0.0.0-20180612162323-1d2cec5bb8cc/go.mod h1:rC/yE65s/DoHB6BzVOUBNYBGTg772JVytyAytffIZkY=
+github.com/mdlayher/raw v0.0.0-20181016155347-fa5ef3332ca9 h1:tOtO8DXiNGj9NshRKHWiZuGlSldPFzFCFYhNtsKTBCs=
+github.com/mdlayher/raw v0.0.0-20181016155347-fa5ef3332ca9/go.mod h1:rC/yE65s/DoHB6BzVOUBNYBGTg772JVytyAytffIZkY=
 github.com/onsi/ginkgo v1.6.0 h1:Ix8l273rp3QzYgXSR+c8d1fTG7UPgYkOSELPhiY/YGw=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/gomega v1.4.1 h1:PZSj/UFNaVp3KxrzHOcS7oyuWA7LoOY/77yCTEFu21U=

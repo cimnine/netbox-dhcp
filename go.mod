@@ -12,7 +12,7 @@ require (
 	github.com/google/gopacket v1.1.16-0.20181004184338-50ff8cd644cf
 	github.com/hpcloud/tail v1.0.0 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94
-	github.com/mdlayher/raw v0.0.0-20180612162323-1d2cec5bb8cc
+	github.com/mdlayher/raw v0.0.0-20181016155347-fa5ef3332ca9
 	github.com/onsi/ginkgo v1.6.0 // indirect
 	github.com/onsi/gomega v1.4.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
