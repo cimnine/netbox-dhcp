@@ -2,10 +2,11 @@ package v6
 
 import (
 	"fmt"
+	"net"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/mdlayher/raw"
-	"net"
 )
 
 const packetBufferSize = 1500
@@ -24,19 +25,19 @@ func (c *MulticastV6Conn) JoinMulticast(multicastAddr net.IP) {
 
 	c.active[multicastAddr.String()] = multicastAddr
 
-	//c.sendMLDv2(multicastAddr)
+	c.sendMLDv2(multicastAddr, MLDv2Exclude, []net.IP{})
 }
 
 // leave a multicast group
 func (c *MulticastV6Conn) LeaveMulticast(multicastAddr net.IP) {
-	//c.sendMLDv2()
-
 	if _, found := c.active[multicastAddr.String()]; !found {
 		// not part of this multicast group
 		return
 	}
 
 	delete(c.active, multicastAddr.String())
+
+	c.sendMLDv2(multicastAddr, MLDv2Include, []net.IP{})
 }
 
 const MinPackSizeMLDv6 = 48
@@ -92,4 +93,26 @@ func multicastDstMAC(multicastAddr net.IP) (net.HardwareAddr, error) {
 	}
 
 	return net.HardwareAddr{0x33, 0x33, 0x00, longIP[13], longIP[14], longIP[15], longIP[16]}, nil
+}
+
+type MLDv2Filter uint8
+
+const (
+	MLDv2Include MLDv2Filter = 0
+	MLDv2Exclude MLDv2Filter = 1
+)
+
+func (m MLDv2Filter) String() string {
+	switch m {
+	case MLDv2Include:
+		return "INCLUDE"
+	case MLDv2Exclude:
+		return "EXCLUDE"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", m)
+	}
+}
+
+func (c *MulticastV6Conn) sendMLDv2(multicastAddr net.IP, includeFilter MLDv2Filter, sourceList []net.IP) {
+	panic("not implemented") // TODO
 }

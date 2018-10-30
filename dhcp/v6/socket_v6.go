@@ -3,12 +3,13 @@ package v6
 import (
 	"errors"
 	"fmt"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/mdlayher/raw"
 	"log"
 	"net"
 	"regexp"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/mdlayher/raw"
 )
 
 // This is the aprox. minimal size of a DHCP packet
