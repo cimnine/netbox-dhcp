@@ -13,7 +13,7 @@ COPY . ./
 RUN CGO_ENABLED=0 \
     GOOS=linux \
     go build -a -installsuffix cgo \
-    -o nine-dhcp2-linux nine-dhcp2.go
+    -o netbox-dhcp-linux netbox-dhcp.go
 
 # runner
 FROM alpine:latest
@@ -22,7 +22,7 @@ RUN apk --no-cache add \
     tcpdump
 WORKDIR /app/
 
-COPY nine-dhcp2.docker.conf.yaml /etc/nine-dhcp2.conf.yaml
+COPY netbox-dhcp.docker.conf.yaml /etc/netbox-dhcp.conf.yaml
 
-COPY --from=builder /src/nine-dhcp2-linux ./nine-dhcp2
-CMD ["./nine-dhcp2"]
+COPY --from=builder /src/netbox-dhcp-linux ./netbox-dhcp
+CMD ["./netbox-dhcp"]

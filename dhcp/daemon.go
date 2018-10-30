@@ -1,10 +1,11 @@
 package dhcp
 
 import (
-	"github.com/ninech/nine-dhcp2/configuration"
-	"github.com/ninech/nine-dhcp2/resolver"
 	"log"
 	"net"
+
+	"github.com/cimnine/netbox-dhcp/configuration"
+	"github.com/cimnine/netbox-dhcp/resolver"
 )
 
 type Daemon struct {

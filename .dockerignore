@@ -2,8 +2,8 @@ docker-compose.yaml
 README.md
 reference
 
-nine-dhcp2-linux
-nine-dhcp2
+netbox-dhcp-linux
+netbox-dhcp
 *.env
 
 *.log
@@ -12,6 +12,8 @@ Vagrantfile
 
 .git
 .gitignore
+
+.idea
 
 ### Go template
 # Binaries for programs and plugins

@@ -1,6 +1,6 @@
 netbox:
   api:
-    url: http://localhost:8080/api/
+    url: http://netbox:8001/api/
     token: 0123456789abcdef0123456789abcdef01234567
   cache:
     duration: 1h
@@ -13,8 +13,7 @@ netbox:
 cache:
   type: redis
   redis:
-    #    host: redis
-    host: localhost
+    host: redis
     port: 6379
     password:
     database: 0
@@ -25,7 +24,7 @@ daemon:
     level: debug
     path: sysout
   listen_v4: # if left empty, DHCPv4 is being disabled
-    enp0s8:
+    eth0:
       reply_from: 172.29.0.1 # default: an IPv4 configured on the interface
       reply_hostname: # optional, default empty
   listen_v6: # if left empty, DHCPv6 is being disabled
@@ -41,7 +40,7 @@ daemon:
 dhcp:
   # server_uuid must not be empty. used as the server DUID.
   # use https://duckduckgo.com/?q=uuid to generate a valid UUID.
-  server_uuid:
+  server_uuid: 2dccfa69-85e2-46e4-97e7-466007bbfa47
   reservation_duration: 1m # default: 1m
   lease_duration: 1d # default: 6h
   t1_duration: 0.5d # default: 50%
@@ -49,7 +48,7 @@ dhcp:
   default_options: # leave an option empty to not send it
     next_server: 1.2.3.4
     bootfile_name: pxelinux.0
-    domain_name: nine.ch
+    domain_name: cimnine.ch
     dns_servers:
     - 1.1.1.1
     - 1.0.0.1

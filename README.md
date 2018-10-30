@@ -1,6 +1,6 @@
-# nine-dhcp2
+# netbox-dhcp
 
-DHCP Daemon which uses Netbox as datasource and Redis as (local) cache.
+DHCP Daemon which uses Netbox as datasource and Redis as (local) cache, written in Go.
 
 ## Roadmap
 
@@ -17,7 +17,7 @@ Stretch Goals:
 
 ## Configuration
 
-For now, look at the `nine-dhcp2.conf.yaml` file. It has comments describing all the supported features.
+For now, look at the `netbox-dhcp.conf.yaml` file. It has comments describing all the supported features.
 
 ## DHCP
 
@@ -42,13 +42,13 @@ For now, look at the `nine-dhcp2.conf.yaml` file. It has comments describing all
 
 ## Netbox Assumptions
 
-* There are sites in Netbox. A nine-dhcp2 instance is only responsible for certain sites.
+* There are sites in Netbox. A netbox-dhcp instance is only responsible for certain sites.
 * If interfaces have MAC addresses, then they have not more than one IP assigned.
 * If devices have MAC addresses, then they have a primary IP defined.
 
 ### Config Context
 
-nine-dhcp2 recognizes the following additional information provided to a Netbox Device via Config Contexts:
+netbox-dhcp recognizes the following additional information provided to a Netbox Device via Config Contexts:
 
 ```json
 {
@@ -56,7 +56,7 @@ nine-dhcp2 recognizes the following additional information provided to a Netbox 
         "lease_duration": "6h",
         "next_server": "127.0.0.1",
         "bootfile_name": "pxelinux.0",
-        "dns_name": "nine.ch",
+        "dns_name": "cimnine.ch",
         "dns_servers": [
             "1.1.1.1",
             "1.0.0.1"
@@ -70,7 +70,7 @@ nine-dhcp2 recognizes the following additional information provided to a Netbox 
 }
 ```
 
-This information takes precedence over what is provided in the nine-dhcp2 config file.
+This information takes precedence over what is provided in the netbox-dhcp config file.
 All of the keys are optional.
 
 ## Redis
@@ -78,7 +78,7 @@ All of the keys are optional.
 Offered IPs and Leased IPs are added to redis.
 If you want persistence, make sure you run Redis in a persisted mode.
 
-nine-dhcp2 uses the following keys to keep track of IPs:
+netbox-dhcp uses the following keys to keep track of IPs:
 
 * `v4;offer;{transactionid};{ip}`, TTL=reservation_duration
 * `v4;lease;{mac};{ip}`, TTL=lease_duration
@@ -100,7 +100,7 @@ There are two local environments, a fully Docker based and a Vagrant-And-Docker 
 #### Vagrant
 
 To test, two VMs are prepared for you, a `server` and a `client` machine.
-Both will have go installed and the project folder is mounted to `/root/nine-dhcp2`.
+Both will have go installed and the project folder is mounted to `/root/netbox-dhcp`.
 
 First, start both VMs at once:
 
@@ -113,7 +113,7 @@ Now connect to the server:
 ```bash
 # in shell 1
 vagrant ssh server # connect to the server
-/usr/bin/nine-dhcp2 # starts the docker dependencies and then execs `go run nine-dhcp2.go`
+/usr/bin/netbox-dhcp # starts the docker dependencies and then execs `go run netbox-dhcp.go`
 ```
 
 On your workstation go to http://localhost:8080, log in with `admin:admin` and create a site.
@@ -169,19 +169,19 @@ You must uncomment the following section in the `docker-compose.yaml` file:
 ```yaml
 # Uncomment for fast development
 #    volumes:
-#    - ./nine-dhcp2-linux:/app/nine-dhcp2-linux:ro
+#    - ./netbox-dhcp-linux:/app/netbox-dhcp-linux:ro
 ```
 
 Then compile the binary:
 
 ```bash
-$ GOOS=linux go build -o nine-dhcp2-linux
+$ GOOS=linux go build -o netbox-dhcp-linux
 $ docker-compose run --rm app /bin/sh
-Starting nine-dhcp2_postgres_1 ... done
-Starting nine-dhcp2_redis_1    ... done
-Starting nine-dhcp2_netbox-worker_1 ... done
-Starting nine-dhcp2_netbox_1        ... done
-/app # ./nine-dhcp2-linux
+Starting netbox-dhcp_postgres_1 ... done
+Starting netbox-dhcp_redis_1    ... done
+Starting netbox-dhcp_netbox-worker_1 ... done
+Starting netbox-dhcp_netbox_1        ... done
+/app # ./netbox-dhcp-linux
 ``` 
 
 From now on, you can just recompile the binary on your host machine and it will
@@ -206,3 +206,4 @@ docker-compose exec postgres pg_dump -U netbox --exclude-table-data=extras_objec
 ## Copyright
 
 (c) 2018 Nine Internet Solutions
+(c) 2018 Christian Mäder (cimnine)

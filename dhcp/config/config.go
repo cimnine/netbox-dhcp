@@ -3,11 +3,12 @@ package config
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/ninech/nine-dhcp2/dhcp/v6/consts"
-	"github.com/satori/go.uuid"
 	"log"
 	"net"
 	"strings"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/v6/consts"
+	"github.com/satori/go.uuid"
 )
 
 type DHCPConfig struct {

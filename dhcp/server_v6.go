@@ -3,14 +3,15 @@ package dhcp
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/google/gopacket/layers"
-	"github.com/ninech/nine-dhcp2/dhcp/config"
-	"github.com/ninech/nine-dhcp2/dhcp/v6"
-	"github.com/ninech/nine-dhcp2/dhcp/v6/consts"
-	"github.com/ninech/nine-dhcp2/resolver"
-	"github.com/satori/go.uuid"
 	"log"
 	"net"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/config"
+	"github.com/cimnine/netbox-dhcp/dhcp/v6"
+	"github.com/cimnine/netbox-dhcp/dhcp/v6/consts"
+	"github.com/cimnine/netbox-dhcp/resolver"
+	"github.com/google/gopacket/layers"
+	"github.com/satori/go.uuid"
 )
 
 const DHCPv6OptClientLinkLayerAddress = 79

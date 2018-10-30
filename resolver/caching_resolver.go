@@ -1,8 +1,9 @@
 package resolver
 
 import (
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
 	"log"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
 )
 
 // A Sourcer assigns IPs based on a request

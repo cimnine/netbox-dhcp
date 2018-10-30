@@ -14,7 +14,7 @@ Vagrant.configure('2') do |config|
   # boxes at https://vagrantcloud.com/search.
   config.vm.define 'server' do |server|
     server.vm.box = 'ubuntu/bionic64'
-    server.vm.network 'private_network', ip: '172.24.0.2', virtualbox__intnet: 'nine-dhcp2'
+    server.vm.network 'private_network', ip: '172.24.0.2', virtualbox__intnet: 'netbox-dhcp'
     server.vm.network 'forwarded_port', guest: 8080, host: 8080
     server.vm.network 'forwarded_port', guest: 6379, host: 6379
     server.vm.provision 'shell', inline: <<~SHELL
@@ -38,28 +38,28 @@ Vagrant.configure('2') do |config|
       curl -sS -L \
         "https://raw.githubusercontent.com/docker/compose/1.22.0/contrib/completion/bash/docker-compose" \
         -o /etc/bash_completion.d/docker-compose
-      ln -s /root/nine-dhcp2/nine-dhcp2.vagrant.conf.yaml /etc/nine-dhcp2.conf.yaml
+      ln -s /root/netbox-dhcp/netbox-dhcp.vagrant.conf.yaml /etc/netbox-dhcp.conf.yaml
       echo 'alias docker-compose="docker-compose -f docker-compose.vagrant.yaml"' >> "/root/.bashrc"
       echo 'alias dc="docker-compose"' >> "/root/.bashrc"
-      cat <<SETUP > /usr/bin/nine-dhcp2
+      cat <<SETUP > /usr/bin/netbox-dhcp
       #!/bin/bash
       set +e
       if [ "$(id -u)" != "0" ] || [ "${HOME}" != "/root" ]; then
         exec sudo -i $0
       fi
-      cd /root/nine-dhcp2
+      cd /root/netbox-dhcp
       docker-compose -f docker-compose.vagrant.yaml up -d
       if [ "${INSIDE}" != "1" ]; then
         export INSIDE=1
-        go run nine-dhcp2.go
+        go run netbox-dhcp.go
         exec bash
       else
-        exec go run nine-dhcp2.go
+        exec go run netbox-dhcp.go
       fi
       SETUP
-      chmod a+x /usr/bin/nine-dhcp2
+      chmod a+x /usr/bin/netbox-dhcp
       {
-        cd /root/nine-dhcp2
+        cd /root/netbox-dhcp
         docker-compose -f docker-compose.vagrant.yaml pull
       }
     SHELL
@@ -67,7 +67,7 @@ Vagrant.configure('2') do |config|
 
   config.vm.define 'client' do |client|
     client.vm.box = 'ubuntu/bionic64'
-    client.vm.network 'private_network', ip: '172.24.0.10', auto_config: false, virtualbox__intnet: 'nine-dhcp2'
+    client.vm.network 'private_network', ip: '172.24.0.10', auto_config: false, virtualbox__intnet: 'netbox-dhcp'
     client.vm.provision 'shell', inline: <<-SHELL
       apt-get install -y isc-dhcp-client
     SHELL
@@ -102,7 +102,7 @@ Vagrant.configure('2') do |config|
   # the path on the host to the actual folder. The second argument is
   # the path on the guest to mount the folder. And the optional third
   # argument is a set of non-required options.
-  config.vm.synced_folder '.', '/root/nine-dhcp2', owner: 'root', group: 'root', mount_options: ['ro']
+  config.vm.synced_folder '.', '/root/netbox-dhcp', owner: 'root', group: 'root', mount_options: ['ro']
 
   # Provider-specific configuration so you can fine-tune various
   # backing providers for Vagrant. These expose provider-specific options.

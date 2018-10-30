@@ -1,7 +1,7 @@
 package resolver
 
 import (
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
 )
 
 type Solicitationer interface {
