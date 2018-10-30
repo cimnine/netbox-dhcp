@@ -2,6 +2,8 @@
 
 DHCP Daemon which uses Netbox as datasource and Redis as (local) cache, written in Go.
 
+**⚠️ WARNING: DEVELOPMENT ONGOING - Totally unstable software right now ⚠️** 
+
 ## Roadmap
 
 Main Goal: **Make sure it behaves correctly according to RFC2131 & RFC2132.**
