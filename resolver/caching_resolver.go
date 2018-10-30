@@ -1,16 +1,18 @@
 package resolver
 
 import (
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
 	"log"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
 )
 
 // A Sourcer assigns IPs based on a request
 type Sourcer interface {
 	Offerer
+	Solicitationer
 }
 
-// A Cacher keeps record of leased IPs
+// A Cacher keeps records of leased IPs
 type Cacher interface {
 	Acknowledger
 	Releaser
@@ -23,9 +25,13 @@ type CachingResolver struct {
 	Cache  Cacher
 }
 
+func (r CachingResolver) SolicitationV6(clientID, clientMAC string) error {
+	panic("implement me")
+}
+
 func (r CachingResolver) DeclineV4ByMAC(xid, mac, ip string) error {
-	// This strictly violates violates RFC2131 Section 4.3.3.
-	// But it the source should only hand out IPs that are not yet taken anyway.
+	// This strictly violates RFC2131 Section 4.3.3.
+	// But the source should only hand out IPs that are not yet taken anyway.
 	// At least as long as ip pools are not yet implemented.
 	log.Printf("The CachingResolver can't handle declines.")
 	return nil
@@ -33,7 +39,7 @@ func (r CachingResolver) DeclineV4ByMAC(xid, mac, ip string) error {
 
 func (r CachingResolver) DeclineV4ByID(xid, duid, iaid, ip string) error {
 	// This strictly violates violates RFC2131 Section 4.3.3.
-	// But it the source should only hand out IPs that are not yet taken anyway.
+	// But the source should only hand out IPs that are not yet taken anyway.
 	// At least as long as ip pools are not yet implemented.
 	log.Printf("The CachingResolver can't handle declines according to the RFC.")
 	return nil

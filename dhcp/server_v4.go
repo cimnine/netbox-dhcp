@@ -2,20 +2,21 @@ package dhcp
 
 import (
 	"errors"
-	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ninech/nine-dhcp2/dhcp/config"
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
-	"github.com/ninech/nine-dhcp2/resolver"
-	"github.com/ninech/nine-dhcp2/util"
 	"log"
 	"net"
 	"strconv"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/config"
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
+	"github.com/cimnine/netbox-dhcp/resolver"
+	"github.com/cimnine/netbox-dhcp/util"
+	"github.com/insomniacslk/dhcp/dhcpv4"
 )
 
 type ServerV4 struct {
 	Resolver          resolver.Resolver
 	dhcpConfig        *config.DHCPConfig
-	conn              *v4.DHCPConn
+	conn              *v4.DHCPV4Conn
 	broadcast         bool
 	iface             net.Interface
 	shutdown          bool
@@ -23,15 +24,15 @@ type ServerV4 struct {
 	replyFromHostname string
 }
 
-func NewServerV4(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, iface net.Interface, ifaceConfig *config.V4InterfaceConfig) (s ServerV4, err error) {
+func NewServerV4(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, iface net.Interface, listenerConfig *config.V4ListenerConfig) (s ServerV4, err error) {
 	s = ServerV4{
 		Resolver:          resolver,
 		dhcpConfig:        dhcpConfig,
 		iface:             iface,
-		replyFromHostname: ifaceConfig.ReplyHostname,
+		replyFromHostname: listenerConfig.ReplyHostname,
 	}
 
-	replyFromAddress := ifaceConfig.ReplyFromAddress()
+	replyFromAddress := listenerConfig.ReplyFromAddress()
 	if net.IPv4zero.Equal(replyFromAddress) || net.IPv4bcast.Equal(replyFromAddress) {
 		ifaceAddrs, err := iface.Addrs()
 		if err != nil {
@@ -77,7 +78,7 @@ func NewServerV4(dhcpConfig *config.DHCPConfig, resolver resolver.Resolver, ifac
 }
 
 func (s *ServerV4) Start() {
-	log.Printf("Listening on on iface '%s' for packets.", s.iface.Name)
+	log.Printf("Listening on on iface '%s' for DHCPv4 packets.", s.iface.Name)
 	for {
 		dhcpPack, sourceIP, sourceMAC, err := s.conn.ReadFrom()
 
@@ -119,42 +120,42 @@ func (s *ServerV4) handlePacket(dhcp dhcpv4.DHCPv4, srcIP net.IP, srcMAC net.Har
 }
 
 func (s *ServerV4) handleDecline(dhcpDecline *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-	mac, xid := getTransactionIDAndMAC(dhcpDecline)
+	mac, xid := s.getTransactionIDAndMAC(dhcpDecline)
 
 	requestedIPOptions := dhcpDecline.GetOption(dhcpv4.OptionRequestedIPAddress)
 	if len(requestedIPOptions) != 1 {
-		log.Printf("%d IPs requested instead of one", len(requestedIPOptions))
+		log.Printf("%d IPv4s requested instead of one", len(requestedIPOptions))
 		return
 	}
 
 	optRequestedIPAddress, err := dhcpv4.ParseOptRequestedIPAddress(requestedIPOptions[0].ToBytes())
 	if err != nil {
-		log.Printf("Can't decypher the requested IP from '%s'", requestedIPOptions[0].String())
+		log.Printf("Can't decypher the requested IPv4 from '%s'", requestedIPOptions[0].String())
 	}
 
 	requestedIP := optRequestedIPAddress.RequestedAddr.String()
 
-	log.Printf("DHCPDECLINE from MAC '%s' and IP '%s' in transaction '%s'", mac, requestedIP, xid)
+	log.Printf("DHCPDECLINE from MAC '%s' and IPv4 '%s' in transaction '%s'", mac, requestedIP, xid)
 
 	s.Resolver.DeclineV4ByMAC(xid, mac, requestedIP)
 }
 
 func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-	mac, xid := getTransactionIDAndMAC(dhcpRelease)
+	mac, xid := s.getTransactionIDAndMAC(dhcpRelease)
 
 	ip := dhcpRelease.ClientIPAddr()
 	if ip == nil {
-		log.Printf("DHCPRELEASE from MAC '%s' with no client IP", mac)
+		log.Printf("DHCPRELEASE from MAC '%s' with no client IPv4", mac)
 		return
 	}
 
 	ip4 := ip.To4()
 	if ip4 == nil || net.IPv4zero.Equal(ip4) || net.IPv4bcast.Equal(ip4) {
-		log.Printf("DHCPRELEASE from MAC '%s' with invalid client IP '%s'", mac, ip)
+		log.Printf("DHCPRELEASE from MAC '%s' with invalid client IPv4 '%s'", mac, ip)
 		return
 	}
 
-	log.Printf("DHCPRELEASE from MAC '%s' and IP '%s' in transaction '%s'", mac, ip4, xid)
+	log.Printf("DHCPRELEASE from MAC '%s' and IPv4 '%s' in transaction '%s'", mac, ip4, xid)
 
 	s.Resolver.ReleaseV4ByMAC(xid, mac, ip4.String())
 }
@@ -167,14 +168,14 @@ func (s *ServerV4) replyToInform(dhcpInform *dhcpv4.DHCPv4, srcIP *net.IP, srcMA
 }
 
 func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-	mac, xid := getTransactionIDAndMAC(dhcpDiscover)
+	mac, xid := s.getTransactionIDAndMAC(dhcpDiscover)
 	log.Printf("DHCPDISCOVER for MAC '%s' in transaction '%s'", mac, xid)
 
 	clientInfo := resolver.NewClientInfoV4(s.dhcpConfig)
 
 	err := s.Resolver.OfferV4ByMAC(clientInfo, xid, mac)
 	if err != nil {
-		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
+		log.Printf("Error finding IPv4 for MAC '%s': %s", mac, err)
 		return
 	}
 
@@ -183,7 +184,7 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, srcIP *net.IP, s
 		return
 	}
 
-	dstIP, dstMAC := determineDstAddr(dhcpDiscover, dhcpOffer, srcMAC)
+	dstIP, dstMAC := s.determineDstAddr(dhcpDiscover, dhcpOffer, srcMAC)
 
 	log.Printf("Sending DHCPOFFER to '%s' ('%s') from '%s'", dstIP.String(), srcMAC, s.replyFrom)
 
@@ -196,21 +197,21 @@ func (s *ServerV4) replyToDiscover(dhcpDiscover *dhcpv4.DHCPv4, srcIP *net.IP, s
 }
 
 func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-	mac, xid := getTransactionIDAndMAC(dhcpRequest)
+	mac, xid := s.getTransactionIDAndMAC(dhcpRequest)
 
 	requestedIPOptions := dhcpRequest.GetOption(dhcpv4.OptionRequestedIPAddress)
 	if len(requestedIPOptions) != 1 {
-		log.Printf("%d IPs requested instead of one", len(requestedIPOptions))
+		log.Printf("%d IPv4s requested instead of one", len(requestedIPOptions))
 		return
 	}
 
 	optRequestedIPAddress, err := dhcpv4.ParseOptRequestedIPAddress(requestedIPOptions[0].ToBytes())
 	if err != nil {
-		log.Printf("Can't decypher the requested IP from '%s'", requestedIPOptions[0].String())
+		log.Printf("Can't decypher the requested IPv4 from '%s'", requestedIPOptions[0].String())
 	}
 
 	requestedIP := optRequestedIPAddress.RequestedAddr.String()
-	log.Printf("DHCPREQUEST requesting IP '%s' for MAC '%s' and transaction '%s'", requestedIP, mac, xid)
+	log.Printf("DHCPREQUEST requesting IPv4 '%s' for MAC '%s' and transaction '%s'", requestedIP, mac, xid)
 
 	serverIPAddr := dhcpRequest.ServerIPAddr()
 	if serverIPAddr != nil &&
@@ -225,7 +226,7 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, srcIP *net.IP, src
 
 	err = s.Resolver.AcknowledgeV4ByMAC(clientInfo, xid, mac, requestedIP)
 	if err != nil {
-		log.Printf("Error finding IP for MAC '%s': %s", mac, err)
+		log.Printf("Error finding IPv4 for MAC '%s': %s", mac, err)
 		return
 	}
 
@@ -234,7 +235,7 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, srcIP *net.IP, src
 		return
 	}
 
-	dstIP, dstMAC := determineDstAddr(dhcpRequest, dhcpACK, srcMAC)
+	dstIP, dstMAC := s.determineDstAddr(dhcpRequest, dhcpACK, srcMAC)
 
 	log.Printf("Sending DHCPACK to '%s' from '%s'", dstIP.String(), s.replyFrom)
 
@@ -246,13 +247,13 @@ func (s *ServerV4) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, srcIP *net.IP, src
 	return
 }
 
-func getTransactionIDAndMAC(dhcpMsg *dhcpv4.DHCPv4) (string, string) {
+func (s *ServerV4) getTransactionIDAndMAC(dhcpMsg *dhcpv4.DHCPv4) (string, string) {
 	mac := dhcpMsg.ClientHwAddrToString()
 	xid := strconv.FormatUint(uint64(dhcpMsg.TransactionID()), 16)
 	return mac, xid
 }
 
-func determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4, srcMAC *net.HardwareAddr) (net.IP, net.HardwareAddr) {
+func (s *ServerV4) determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4, srcMAC *net.HardwareAddr) (net.IP, net.HardwareAddr) {
 	/*
 			 From the RFC2131, Page 23:
 

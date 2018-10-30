@@ -8,5 +8,6 @@ type NetboxConfig struct {
 	Cache struct {
 		RawDuration string `yaml:"duration"`
 	}
-	Sites []string
+	Sites           []string
+	DeviceDUIDField string `yaml:"device_duid_field"`
 }

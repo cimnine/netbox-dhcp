@@ -3,10 +3,11 @@ package resolver
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/go-redis/redis"
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
 	"log"
 	"strings"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
+	"github.com/go-redis/redis"
 )
 
 type Redis struct {
