@@ -1,12 +1,13 @@
 package configuration
 
 import (
-	"github.com/ninech/nine-dhcp2/cache"
-	"github.com/ninech/nine-dhcp2/dhcp/config"
-	"github.com/ninech/nine-dhcp2/netbox"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
+
+	"github.com/cimnine/netbox-dhcp/cache"
+	"github.com/cimnine/netbox-dhcp/dhcp/config"
+	"github.com/cimnine/netbox-dhcp/netbox"
+	"gopkg.in/yaml.v2"
 )
 
 type Configuration struct {

@@ -9,11 +9,11 @@ import (
 
 	"github.com/go-redis/redis"
 
-	redisCache "github.com/ninech/nine-dhcp2/cache/redis"
-	"github.com/ninech/nine-dhcp2/configuration"
-	"github.com/ninech/nine-dhcp2/dhcp"
-	"github.com/ninech/nine-dhcp2/netbox"
-	"github.com/ninech/nine-dhcp2/resolver"
+	redisCache "github.com/cimnine/netbox-dhcp/cache/redis"
+	"github.com/cimnine/netbox-dhcp/configuration"
+	"github.com/cimnine/netbox-dhcp/dhcp"
+	"github.com/cimnine/netbox-dhcp/netbox"
+	"github.com/cimnine/netbox-dhcp/resolver"
 )
 
 var netboxClient netbox.Client
@@ -21,11 +21,10 @@ var redisClient redis.Client
 var stopped chan bool
 
 func main() {
-	fmt.Println("nine-dhcp2 v0.0.0")
-	fmt.Println("(c) 2018 Nine Internet Solutions")
+	fmt.Println("netbox-dhcp v0.0.0")
 
 	var configFileName string
-	flag.StringVar(&configFileName, "config", "/etc/nine-dhcp2.conf.yaml", "where to load the config from")
+	flag.StringVar(&configFileName, "config", "/etc/netbox-dhcp.conf.yaml", "where to load the config from")
 	flag.Parse()
 
 	config, err := configuration.ReadConfig(configFileName)

@@ -2,12 +2,13 @@ package netbox
 
 import (
 	"fmt"
-	"github.com/ninech/nine-dhcp2/netbox/models"
-	"gopkg.in/resty.v1"
 	"log"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/cimnine/netbox-dhcp/netbox/models"
+	"gopkg.in/resty.v1"
 )
 
 type EntityResolver interface {

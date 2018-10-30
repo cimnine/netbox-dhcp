@@ -2,14 +2,15 @@ package dhcp
 
 import (
 	"errors"
-	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/ninech/nine-dhcp2/dhcp/config"
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
-	"github.com/ninech/nine-dhcp2/resolver"
-	"github.com/ninech/nine-dhcp2/util"
 	"log"
 	"net"
 	"strconv"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/config"
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
+	"github.com/cimnine/netbox-dhcp/resolver"
+	"github.com/cimnine/netbox-dhcp/util"
+	"github.com/insomniacslk/dhcp/dhcpv4"
 )
 
 type ServerV4 struct {

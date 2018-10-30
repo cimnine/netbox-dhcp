@@ -1,11 +1,12 @@
 package resolver
 
 import (
-	"github.com/ninech/nine-dhcp2/dhcp/config"
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
-	"github.com/ninech/nine-dhcp2/util"
 	"net"
 	"time"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/config"
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
+	"github.com/cimnine/netbox-dhcp/util"
 )
 
 func NewClientInfoV4(dhcpConfig *config.DHCPConfig) *v4.ClientInfoV4 {

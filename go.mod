@@ -1,4 +1,4 @@
-module github.com/ninech/nine-dhcp2
+module github.com/cimnine/netbox-dhcp
 
 require gopkg.in/yaml.v2 v2.2.1
 

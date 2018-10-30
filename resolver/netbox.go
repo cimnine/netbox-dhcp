@@ -2,13 +2,14 @@ package resolver
 
 import (
 	"fmt"
-	"github.com/ninech/nine-dhcp2/dhcp/v4"
-	"github.com/ninech/nine-dhcp2/netbox"
-	"github.com/ninech/nine-dhcp2/netbox/models"
-	"github.com/ninech/nine-dhcp2/util"
 	"log"
 	"net"
 	"time"
+
+	"github.com/cimnine/netbox-dhcp/dhcp/v4"
+	"github.com/cimnine/netbox-dhcp/netbox"
+	"github.com/cimnine/netbox-dhcp/netbox/models"
+	"github.com/cimnine/netbox-dhcp/util"
 )
 
 type Netbox struct {
