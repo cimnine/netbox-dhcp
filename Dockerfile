@@ -13,15 +13,16 @@ COPY . ./
 RUN CGO_ENABLED=0 \
     GOOS=linux \
     go build -a -installsuffix cgo \
-    -o nine-dhcp2-linux .
+    -o nine-dhcp2-linux nine-dhcp2.go
 
 # runner
 FROM alpine:latest
 RUN apk --no-cache add \
-    ca-certificates
+    ca-certificates \
+    tcpdump
 WORKDIR /app/
 
-COPY nine-dhcp2.conf.yaml ./
+COPY nine-dhcp2.docker.conf.yaml /etc/nine-dhcp2.conf.yaml
 
-COPY --from=builder /src/nine-dhcp2-linux .
-CMD ["./nine-dhcp2-linux"]
+COPY --from=builder /src/nine-dhcp2-linux ./nine-dhcp2
+CMD ["./nine-dhcp2"]

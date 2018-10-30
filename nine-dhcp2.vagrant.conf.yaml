@@ -1,8 +1,6 @@
 netbox:
   api:
-#    url: http://nine-dhcp2.docker/api/
-    #    url: http://netbox:8001/api/
-    url: http://localhost:8080/api/
+    url: http://127.0.0.1:8080/api/
     token: 0123456789abcdef0123456789abcdef01234567
   cache:
     duration: 1h
@@ -12,8 +10,7 @@ netbox:
 cache:
   type: redis
   redis:
-#    host: redis
-    host: localhost
+    host: 127.0.0.1
     port: 6379
     password:
     database: 0
@@ -24,8 +21,8 @@ daemon:
     level: debug
     path: sysout
   listen_v4: # if left empty, DHCPv4 is being disabled
-    enp0s3:
-      reply_from: 172.29.0.1 # default: an IPv4 configured on the interface
+    enp0s8:
+      reply_from: 172.29.0.2 # default: an IPv4 configured on the interface
       reply_hostname: # optional, default empty
   listen_v6: # if left empty, DHCPv6 is being disabled
     '::0': # listen on all interfaces

@@ -1,9 +1,14 @@
 docker-compose.yaml
 README.md
+reference
 
 nine-dhcp2-linux
 nine-dhcp2
 *.env
+
+*.log
+Vagrantfile
+*vagrant*
 
 .git
 .gitignore

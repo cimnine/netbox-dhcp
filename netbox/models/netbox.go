@@ -13,7 +13,7 @@ type NetboxCustomFieldsObject struct {
 }
 
 type EmbeddedNetboxObject struct {
-	ID  string `json:"id"`
+	ID  uint64 `json:"id"`
 	URL string `json:"url"`
 }
 
