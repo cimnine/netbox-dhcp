@@ -14,5 +14,5 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-netbox-dhcp2
-netbox-dhcp2-linux
+netbox-dhcp
+netbox-dhcp-linux

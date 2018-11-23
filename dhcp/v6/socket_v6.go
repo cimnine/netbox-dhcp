@@ -56,6 +56,18 @@ func ListenDHCPv6(iface net.Interface, daddrs []net.IP, laddr net.IP) (*DHCPV6Co
 
 	conn, err := raw.ListenPacket(&iface, uint16(layers.EthernetTypeIPv6), &raw.Config{})
 
+	for _, daddr := range daddrs {
+		if daddr.IsMulticast() {
+			err = conn.JoinHwMulticast(ip6ToHwAddr(daddr))
+			if err != nil {
+				conn.Close()
+				return nil, fmt.Errorf(
+					"impossible to join multicast group '%s' on the interface '%s' because of %s",
+					daddr, iface.Name, err)
+			}
+		}
+	}
+
 	//return &DHCPV6Conn{MulticastV6Conn: MulticastV6Conn{conn: conn}, iface: iface, daddrs: daddrs, laddr: laddr.To16()}, err
 	return &DHCPV6Conn{conn: conn, iface: iface, daddrs: daddrs, laddr: laddr.To16()}, err
 }
@@ -218,6 +230,22 @@ func firstLinkLocalIPv6(iface net.Interface) net.IP {
 		}
 	}
 	return nil
+}
+
+// converts an IPv6 multicast address to the corresponding link layer address
+// according to rfc2464:
+//
+// An IPv6 packet with a multicast destination address DST, consisting
+// of the sixteen octets DST[1] through DST[16], is transmitted to the
+// Ethernet multicast address whose first two octets are the value 3333
+// hexadecimal and whose last four octets are the last four octets of
+// DST.
+//
+// See https://tools.ietf.org/html/rfc2464#section-7
+func ip6ToHwAddr(ipaddr net.IP) net.HardwareAddr {
+	hwaddr := net.HardwareAddr{0x33,0x33,0x00,0x00,0x00,0x00}
+	copy(hwaddr[2:],ipaddr[len(ipaddr)-4:])
+	return hwaddr
 }
 
 //func writeToPcap(pack []byte) {
