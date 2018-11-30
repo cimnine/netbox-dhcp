@@ -194,7 +194,7 @@ func (c *DHCPV6Conn) matchesDaddr(dstIP net.IP) bool {
 	return false
 }
 
-func (c *DHCPV6Conn) writeTo(eth *layers.Ethernet, ip4 *layers.IPv6, udp *layers.UDP, dhcpv6 *layers.DHCPv6, addr *raw.Addr) (int, error) {
+func (c *DHCPV6Conn) writeTo(eth *layers.Ethernet, ip6 *layers.IPv6, udp *layers.UDP, dhcpv6 *layers.DHCPv6, addr *raw.Addr) (int, error) {
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		ComputeChecksums: true,
@@ -203,7 +203,7 @@ func (c *DHCPV6Conn) writeTo(eth *layers.Ethernet, ip4 *layers.IPv6, udp *layers
 
 	dhcpv6.SerializeTo(buf, opts)
 	udp.SerializeTo(buf, opts)
-	ip4.SerializeTo(buf, opts)
+	ip6.SerializeTo(buf, opts)
 	eth.SerializeTo(buf, opts)
 
 	pack := buf.Bytes()

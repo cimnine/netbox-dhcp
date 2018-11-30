@@ -5,7 +5,7 @@ import (
 )
 
 type Solicitationer interface {
-	SolicitationV6(clientID, clientMAC string) error
+	SolicitationV6(clientID, clientMAC string) (bool, error)
 }
 
 type Offerer interface {

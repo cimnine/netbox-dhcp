@@ -10,7 +10,8 @@ require (
 	github.com/go-redis/redis v6.14.0+incompatible
 	github.com/go-resty/resty v1.8.0 // indirect
 	github.com/golang/protobuf v1.2.0 // indirect
-	github.com/google/gopacket v1.1.16-0.20181004184338-50ff8cd644cf
+	github.com/google/go-cmp v0.2.0 // indirect
+	github.com/google/gopacket v1.1.16-0.20181127160308-a3c4a85b4a4c
 	github.com/hpcloud/tail v1.0.0 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94
 	github.com/mdlayher/raw v0.0.0-20181016155347-fa5ef3332ca9
@@ -20,6 +21,7 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/stretchr/testify v1.2.2 // indirect
 	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f // indirect
+	golang.org/x/sys v0.0.0-20181128092732-4ed8d59d0b35 // indirect
 	golang.org/x/text v0.3.0 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/resty.v1 v1.9.0

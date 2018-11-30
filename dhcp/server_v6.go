@@ -54,7 +54,7 @@ func (s *ServerV6) Start() {
 		}
 
 		if err != nil {
-			log.Println("Failed to process a packet: ", err)
+			log.Println("Failed to process a DHCPv6 packet: ", err)
 			continue
 		}
 
@@ -68,13 +68,13 @@ func (s *ServerV6) Stop() {
 }
 
 func (s *ServerV6) handlePacket(dhcp layers.DHCPv6, srcIP net.IP, srcMAC net.HardwareAddr) {
-	log.Printf("DHCP message type: %v (sourceMAC: %s sourceIP: %s)", dhcp.MsgType, srcMAC, srcIP)
+	log.Printf("DHCPv6 message type: %v (sourceMAC: %s sourceIP: %s)", dhcp.MsgType, srcMAC, srcIP)
 
 	switch dhcp.MsgType {
 	case layers.DHCPv6MsgTypeSolicit:
 		s.replyToSolicit(dhcp, srcIP, srcMAC) // v4: "discover"
 	case layers.DHCPv6MsgTypeRequest: // v4: "request"
-		//s.replyToRequest(dhcp, srcIP, srcMAC)
+		s.replyToRequest(dhcp, srcIP, srcMAC, false)
 	case layers.DHCPv6MsgTypeConfirm:
 		//s.replyToConfirm(dhcp, srcIP, srcMAC)
 	case layers.DHCPv6MsgTypeRenew:
@@ -90,37 +90,26 @@ func (s *ServerV6) handlePacket(dhcp layers.DHCPv6, srcIP net.IP, srcMAC net.Har
 	case layers.DHCPv6MsgTypeRelayForward:
 		//s.replyToRelayForward(dhcp, srcIP, srcMAC)
 	case layers.DHCPv6MsgTypeUnspecified:
-		log.Printf("Unspecified message type: '%s'", dhcp.MsgType.String())
+		log.Printf("DHCPv6 Unspecified message type: '%s'", dhcp.MsgType.String())
 	default:
-		log.Printf("Unknown message type: '%x'", dhcp.MsgType)
+		log.Printf("DHCPv6 Unknown message type: '%x'", dhcp.MsgType)
 	}
 }
 
 func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC net.HardwareAddr) {
-	optmap := make(map[layers.DHCPv6Opt]layers.DHCPv6Option)
-	for _, opt := range solicit.Options {
-		optmap[opt.Code] = opt
-	}
+	optmap := mapOpts(solicit.Options)
 
-	if _, found := optmap[layers.DHCPv6OptClientID]; !found {
-		log.Printf("DHCPv6 SOLICIT message from '%s' does not contain a client ID option. Discarding the message.", srcIP)
+	if isClientIDMissing(optmap, srcIP) {
 		return
 	}
-	if _, found := optmap[layers.DHCPv6OptServerID]; found {
-		log.Printf("DHCPv6 SOLICIT message from '%s' contains a server ID option.", srcIP)
-	}
 
-	rawClientDUID := optmap[layers.DHCPv6OptClientID].Data
-	clientDUID, err := extractClientDUID(rawClientDUID)
-	if err != nil {
-		log.Printf("WARN: The client's DUID was not correctly parsed: %s", err)
-	}
+	rawClientDUID, clientDUID := extractClientDUID(optmap)
+
 	log.Printf("DHCPv6 SOLICIT message from '%s' with client ID '%s'.", srcIP, clientDUID)
 
 	var clientMAC net.HardwareAddr
-	//if clientLLAddrOpt, found := optmap[layers.DHCPv6OptClientLinkLayerAddress]; found {
 
-	if clientLLAddrOpt, found := optmap[DHCPv6OptClientLinkLayerAddress]; found {
+	if clientLLAddrOpt, found := optmap[layers.DHCPv6OptClientLinkLayerAddress]; found {
 		optContent := clientLLAddrOpt.Data
 		//llType := binary.BigEndian.Uint16(optContent[:2])
 		clientMAC = optContent[2:]
@@ -128,50 +117,31 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 		clientMAC = srcMAC
 	}
 
-	err = s.Resolver.SolicitationV6(clientDUID, clientMAC.String())
+	ok, err := s.Resolver.SolicitationV6(clientDUID, clientMAC.String())
 	if err != nil {
-		log.Printf("SOLICITATION failed for client ID '%s' / MAC '%s'; ignoring request", clientDUID, srcMAC)
+		log.Printf("DHCPv6 SOLICITATION failed for client ID '%s' / MAC '%s' because of an error: %s", clientDUID, srcMAC, err)
+		return
+	} else if !ok {
+		log.Printf("Client with ID '%s' / MAC '%s' not found, ignoring DHCPv6 SOLICITATION", clientDUID, srcMAC)
 		return
 	}
 
 	_, rapidCommit := optmap[layers.DHCPv6OptRapidCommit]
 	if rapidCommit {
-		log.Printf("RAPID_COMMIT option detected for client DUID '%s' / MAC '%s'", clientDUID, srcMAC)
+		log.Printf("DHCPv6 RAPID_COMMIT option detected for client DUID '%s' / MAC '%s'", clientDUID, srcMAC)
 
-		// TODO switch to REPLY flow
-		//clientInfo := resolver.NewClientInfoV6(s.dhcpConfig)
-		//
-		//err := s.Resolver.OfferV6ByID(clientInfo, rawClientDUID, srcMAC)
-		//if err != nil {
-		//  log.Printf("Error finding IPv6 for client DUID '%s' / MAC '%s': %s", rawClientDUID, srcMAC, err)
-		//  return
-		//}
-		//return
+		s.replyToRequest(solicit, srcIP, srcMAC, true)
+		return
 	}
 
 	// build response
 	serverDUID, err := s.dhcpConfig.ServerDUID()
 	if err != nil {
-		log.Printf("Server DUID improperly configured: %s", err)
+		log.Printf("DHCPv6 Server DUID improperly configured: %s", err)
 		return
 	}
 
-	serverIdentifier := layers.DHCPv6Option{
-		Code: layers.DHCPv6OptServerID,
-		// Length is fixed by the serializer,
-		Data: serverDUID,
-	}
-
-	clientIdentifier := layers.DHCPv6Option{
-		Code: layers.DHCPv6OptClientID,
-		// Length is fixed by the serializer,
-		Data: rawClientDUID,
-	}
-
-	options := layers.DHCPv6Options{
-		serverIdentifier,
-		clientIdentifier,
-	}
+	options := serverAndClientIDOptions(serverDUID, rawClientDUID)
 
 	if s.listenerConfig.AdvertiseUnicast {
 		allowUnicast := layers.DHCPv6Option{
@@ -182,15 +152,7 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 		options = append(options, allowUnicast)
 	}
 
-	// TODO implement address fetching
-	statusData := make([]byte, 2)
-	binary.BigEndian.PutUint16(statusData, uint16(consts.DHCPv6StatusCodeNoAddressesAvailable))
-	statusData = append(statusData, "Not yet implemented"...)
-	status := layers.DHCPv6Option{
-		Code: layers.DHCPv6OptStatusCode,
-		// Length is fixed by the serializer,
-		Data: statusData,
-	}
+	status := statusOption(consts.DHCPv6StatusCodeNoAddressesAvailable, "Not yet implemented")
 	options = append(options, status)
 
 	advertise := layers.DHCPv6{
@@ -199,52 +161,145 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 		Options:       options,
 	}
 
-	var dstIP net.IP            // TODO
-	var dstMAC net.HardwareAddr // TODO
+	fmt.Printf("%s", advertise.Options.String())
 
-	dstIP = srcIP
-	dstMAC = srcMAC
+	var dstIP net.IP
+	var dstMAC net.HardwareAddr
+
+	dstIP = srcIP   // TODO handle relay case
+	dstMAC = srcMAC // TODO handle relay case
 
 	err = s.conn.WriteTo(advertise, dstIP, dstMAC)
 	if err != nil {
-		log.Printf("Can't send ADVERTISE to '%s' ('%s'): %s", dstIP, dstMAC, err)
+		log.Printf("Can't send DHCPv6 ADVERTISE to '%s' ('%s'): %s", dstIP, dstMAC, err)
+		return
 	}
 
-	//
-	//
-	//mac, xid := s.getTransactionIDAndMAC(dhcpDiscover)
-	//log.Printf("DHCPDISCOVER for MAC '%s' in transaction '%s'", mac, xid)
-	//
-	//clientInfo := resolver.NewClientInfoV6(s.dhcpConfig)
-	//
-	//err := s.Resolver.OfferV6ByMAC(clientInfo, xid, mac)
-	//if err != nil {
-	//  log.Printf("Error finding IP for MAC '%s': %s", mac, err)
-	//  return
-	//}
-	//
-	//dhcpOffer, err := s.prepareAnswer(dhcpDiscover, clientInfo, dhcpv4.MessageTypeOffer)
-	//if err != nil {
-	//  return
-	//}
-	//
-	//dstIP, dstMAC := s.determineDstAddr(dhcpDiscover, dhcpOffer, srcMAC)
-	//
-	//log.Printf("Sending DHCPOFFER to '%s' ('%s') from '%s'", dstIP.String(), srcMAC, s.replyFrom)
-	//
-	//err = s.conn.WriteTo(*dhcpOffer, dstIP, dstMAC)
-	//if err != nil {
-	//  log.Printf("Can't send DHCPOFFER to '%s' ('%s'): %s", dstIP.String(), srcMAC, err)
-	//}
-	//
-	//return
+	log.Printf("Sent a DHCPv6 ADVERTISE for client ID '%s' / MAC '%s' msg to '%s' ('%s')",
+		clientDUID, clientMAC, dstIP, dstMAC)
 }
 
-// extractClientDUID spreads the DUID type code from the content.
+func (s *ServerV6) replyToRequest(request layers.DHCPv6, srcIP net.IP, srcMAC net.HardwareAddr, rapidCommit bool) {
+	optMap := mapOpts(request.Options)
+
+	rawClientDUID, clientDUID := extractClientDUID(optMap)
+
+	serverDUID, err := s.dhcpConfig.ServerDUID()
+	if err != nil {
+		log.Printf("DHCPv6 Server DUID improperly configured: %s", err)
+		return
+	}
+
+	// When the server receives a Request message via unicast from a client
+	// to which the server has not sent a unicast option, the server
+	// discards the Request message and responds with a Reply message
+	// containing a Status Code option with the value UseMulticast, a Server
+	// Identifier option containing the server's DUID, the Client Identifier
+	// option from the client message, and no other options.
+	// https://tools.ietf.org/html/rfc3315#section-18.2.1
+	if !s.listenerConfig.AdvertiseUnicast && srcIP.IsGlobalUnicast() {
+		options := serverAndClientIDOptions(serverDUID, rawClientDUID)
+
+		options = append(options, statusOption(
+			consts.DHCPv6StatusCodeUseMulticast, "the anycast option is not enabled"))
+
+		reply := layers.DHCPv6{
+			MsgType:       layers.DHCPv6MsgTypeReply,
+			TransactionID: request.TransactionID,
+			Options:       options,
+		}
+
+		var dstIP net.IP
+		var dstMAC net.HardwareAddr
+
+		dstIP = srcIP   // TODO handle relay case
+		dstMAC = srcMAC // TODO handle relay case
+
+		err = s.conn.WriteTo(reply, dstIP, dstMAC)
+		if err != nil {
+			log.Printf("Can't send DHCPv6 ADVERTISE to '%s' ('%s'): %s", dstIP, dstMAC, err)
+			return
+		}
+
+		log.Printf(
+			"Sent a DHCPv6 REPLY with a status of 'UseMulticast' for client ID '%s' / MAC '%s' / IP '%s' msg to '%s' ('%s')",
+			clientDUID, srcMAC, srcIP, dstIP, dstMAC)
+
+		return
+	}
+
+
+
+}
+
+// extractClientDUID returns the rawClientDUID for use in the response, and the clientDUID for use in a lookup
+func extractClientDUID(optmap map[layers.DHCPv6Opt]layers.DHCPv6Option) ([]byte, string) {
+	rawClientDUID := optmap[layers.DHCPv6OptClientID].Data
+	clientDUID, err := parseClientDUID(rawClientDUID)
+	if err != nil {
+		log.Printf("WARN: The client's DHCPv6 DUID was not correctly parsed: %s", err)
+	}
+	return rawClientDUID, clientDUID
+}
+
+// isClientIDMissing returns `true` if the request did not contain a client DUID.
+func isClientIDMissing(optmap map[layers.DHCPv6Opt]layers.DHCPv6Option, srcIP net.IP) bool {
+	if _, found := optmap[layers.DHCPv6OptServerID]; found {
+		log.Printf("DHCPv6 SOLICIT message from '%s' contains a server ID option.", srcIP)
+	}
+	if _, found := optmap[layers.DHCPv6OptClientID]; !found {
+		log.Printf("DHCPv6 SOLICIT message from '%s' does not contain a client ID option. Discarding the message.", srcIP)
+		return true
+	}
+	return false
+}
+
+// mapOpts builds a map of option IDs to the corresponding option from a list of options
+func mapOpts(options layers.DHCPv6Options) map[layers.DHCPv6Opt]layers.DHCPv6Option {
+	optmap := make(map[layers.DHCPv6Opt]layers.DHCPv6Option)
+	for _, opt := range options {
+		optmap[opt.Code] = opt
+	}
+	return optmap
+}
+
+// statusOption creates a status option from the given parameters
+func statusOption(statusCode consts.DHCPv6StatusCode, statusMessage string) layers.DHCPv6Option {
+	statusData := make([]byte, 2)
+	binary.BigEndian.PutUint16(statusData, uint16(statusCode))
+	statusData = append(statusData, statusMessage...)
+	status := layers.DHCPv6Option{
+		Code: layers.DHCPv6OptStatusCode,
+		// Length is fixed by the serializer,
+		Data: statusData,
+	}
+	return status
+}
+
+// serverAndClientIDOptions creates the server id option and the client id option and returns them together
+func serverAndClientIDOptions(serverDUID []byte, rawClientDUID []byte) layers.DHCPv6Options {
+	serverIdentifier := layers.DHCPv6Option{
+		Code: layers.DHCPv6OptServerID,
+		// Length is fixed by the serializer,
+		Data: serverDUID,
+	}
+	clientIdentifier := layers.DHCPv6Option{
+		Code: layers.DHCPv6OptClientID,
+		// Length is fixed by the serializer,
+		Data: rawClientDUID,
+	}
+	options := layers.DHCPv6Options{
+		serverIdentifier,
+		clientIdentifier,
+	}
+	return options
+}
+
+// parseClientDUID spreads the DUID type code from the content.
 // If the DUID is of type UUID, it parses the UUID.
 // It will always return a string based on the content after the DUID type code.
 // It will return an error if the content should be interpreted, but this was unsuccessful.
-func extractClientDUID(duid []byte) (string, error) {
+func parseClientDUID(duid []byte) (string, error) {
 	duidTypeCode := consts.DHCPv6DUIDTypeCode(binary.BigEndian.Uint16(duid[:2]))
 	switch duidTypeCode {
 	case consts.DHCPv6DUIDTypeUUID:

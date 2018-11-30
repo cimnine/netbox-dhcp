@@ -16,28 +16,28 @@ type Netbox struct {
 	Client *netbox.Client
 }
 
-func (n Netbox) SolicitationV6(clientID, clientMAC string) error {
+func (n Netbox) SolicitationV6(clientID, clientMAC string) (bool, error) {
 	_, err := n.findDeviceByDUID(clientID)
 	if err == nil {
-		return nil
+		return true, nil
 	}
 
 	log.Printf("Can't find a Device for client ID '%s'. Trying with MAC.", clientID)
 
 	_, _, _, err = n.findByInterfaceMAC(clientMAC)
 	if err == nil {
-		return nil
+		return true, nil
 	}
 
 	log.Printf("Can't find an Interface for MAC '%s'. Trying via Device.", clientMAC)
 
 	_, _, _, err = n.findByDeviceMAC(clientMAC)
 	if err == nil {
-		return nil
+		return true, nil
 	}
 
 	log.Printf("Can't find an Interface or a Device for client ID '%s' / MAC '%s'. Giving up.", clientID, clientMAC)
-	return fmt.Errorf("no result for client ID '%s' / MAC '%s' in Netbox", clientID, clientMAC)
+	return false, fmt.Errorf("no result for client ID '%s' / MAC '%s' in Netbox", clientID, clientMAC)
 }
 
 func (n Netbox) OfferV4ByMAC(info *v4.ClientInfoV4, transactionID, mac string) error {

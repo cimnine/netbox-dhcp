@@ -25,12 +25,20 @@ type CachingResolver struct {
 	Cache  Cacher
 }
 
-func (r CachingResolver) SolicitationV6(clientID, clientMAC string) error {
-	panic("implement me")
+func (r CachingResolver) SolicitationV6(clientID, clientMAC string) (bool, error) {
+	ok, err := r.Source.SolicitationV6(clientID, clientMAC)
+
+	if err != nil {
+		return false, err
+	}
+
+	// TODO cache
+
+	return ok, nil
 }
 
 func (r CachingResolver) DeclineV4ByMAC(xid, mac, ip string) error {
-	// This strictly violates RFC2131 Section 4.3.3.
+	// This strictly speaking violates RFC2131 Section 4.3.3.
 	// But the source should only hand out IPs that are not yet taken anyway.
 	// At least as long as ip pools are not yet implemented.
 	log.Printf("The CachingResolver can't handle declines.")
@@ -38,7 +46,7 @@ func (r CachingResolver) DeclineV4ByMAC(xid, mac, ip string) error {
 }
 
 func (r CachingResolver) DeclineV4ByID(xid, duid, iaid, ip string) error {
-	// This strictly violates violates RFC2131 Section 4.3.3.
+	// This strictly speaking violates violates RFC2131 Section 4.3.3.
 	// But the source should only hand out IPs that are not yet taken anyway.
 	// At least as long as ip pools are not yet implemented.
 	log.Printf("The CachingResolver can't handle declines according to the RFC.")
