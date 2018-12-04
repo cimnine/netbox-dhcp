@@ -18,6 +18,8 @@ github.com/google/gopacket v1.1.16-0.20181004184338-50ff8cd644cf h1:ijP2WnkuLR88
 github.com/google/gopacket v1.1.16-0.20181004184338-50ff8cd644cf/go.mod h1:UCLx9mCmAwsVbn6qQl1WIEt2SO7Nd2fD0th1TBAsqBw=
 github.com/google/gopacket v1.1.16-0.20181127160308-a3c4a85b4a4c h1:zW/HBk3WWt7h7euLIKpoxgjp1du/CUSGjFq1AEnGCi4=
 github.com/google/gopacket v1.1.16-0.20181127160308-a3c4a85b4a4c/go.mod h1:UCLx9mCmAwsVbn6qQl1WIEt2SO7Nd2fD0th1TBAsqBw=
+github.com/google/gopacket v1.1.16-0.20181204164255-d5dee4e2f7c6 h1:1NIx0HsUkRLw5A3M2XGFzfymhqKfO+gqtneZrzKr1Gw=
+github.com/google/gopacket v1.1.16-0.20181204164255-d5dee4e2f7c6/go.mod h1:UCLx9mCmAwsVbn6qQl1WIEt2SO7Nd2fD0th1TBAsqBw=
 github.com/hpcloud/tail v1.0.0 h1:nfCOvKYfkgYP8hkirhJocXT2+zOD8yUNjXaWfTlyFKI=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94 h1:l6+OWvahqPoGzXoFy8W9eGCwXp7rSP8iKoWtAih5GcE=

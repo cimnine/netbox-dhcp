@@ -11,7 +11,7 @@ require (
 	github.com/go-resty/resty v1.8.0 // indirect
 	github.com/golang/protobuf v1.2.0 // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
-	github.com/google/gopacket v1.1.16-0.20181127160308-a3c4a85b4a4c
+	github.com/google/gopacket v1.1.16-0.20181204164255-d5dee4e2f7c6
 	github.com/hpcloud/tail v1.0.0 // indirect
 	github.com/insomniacslk/dhcp v0.0.0-20180824145855-f92bc73fec94
 	github.com/mdlayher/raw v0.0.0-20181016155347-fa5ef3332ca9

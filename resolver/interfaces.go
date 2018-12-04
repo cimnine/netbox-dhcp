@@ -2,10 +2,11 @@ package resolver
 
 import (
 	"github.com/cimnine/netbox-dhcp/dhcp/v4"
+	"github.com/cimnine/netbox-dhcp/dhcp/v6"
 )
 
 type Solicitationer interface {
-	SolicitationV6(clientID, clientMAC string) (bool, error)
+	SolicitationV6(info *v6.ClientInfoV6, clientID, clientMAC string) (bool, error)
 }
 
 type Offerer interface {

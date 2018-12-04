@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"github.com/cimnine/netbox-dhcp/dhcp/v6"
 	"log"
 
 	"github.com/cimnine/netbox-dhcp/dhcp/v4"
@@ -25,8 +26,8 @@ type CachingResolver struct {
 	Cache  Cacher
 }
 
-func (r CachingResolver) SolicitationV6(clientID, clientMAC string) (bool, error) {
-	ok, err := r.Source.SolicitationV6(clientID, clientMAC)
+func (r CachingResolver) SolicitationV6(info *v6.ClientInfoV6, clientID, clientMAC string) (bool, error) {
+	ok, err := r.Source.SolicitationV6(info, clientID, clientMAC)
 
 	if err != nil {
 		return false, err
