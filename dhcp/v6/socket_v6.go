@@ -60,7 +60,7 @@ func ListenDHCPv6(iface net.Interface, daddrs []net.IP, laddr net.IP) (*DHCPV6Co
 		if daddr.IsMulticast() {
 			err = conn.JoinHwMulticast(ip6ToHwAddr(daddr))
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				return nil, fmt.Errorf(
 					"impossible to join multicast group '%s' on the interface '%s' because of %s",
 					daddr, iface.Name, err)
@@ -201,10 +201,25 @@ func (c *DHCPV6Conn) writeTo(eth *layers.Ethernet, ip6 *layers.IPv6, udp *layers
 		FixLengths:       true,
 	}
 
-	dhcpv6.SerializeTo(buf, opts)
-	udp.SerializeTo(buf, opts)
-	ip6.SerializeTo(buf, opts)
-	eth.SerializeTo(buf, opts)
+	err := dhcpv6.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	err = udp.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	err = ip6.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	err = eth.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
 
 	pack := buf.Bytes()
 

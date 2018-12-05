@@ -19,16 +19,16 @@ type Redis struct {
 // key:						      					value:	timeout:
 // --------------------------------------------------
 // v4;offer;{xid}     						{json}  reservation
-// v4;lease;{mac};{ip}						{json}  lease
-// v4;lease;{duid};{iaid};{ip}		{json}  lease
+// v4;lease;{mac}     						{json}  lease
+// v4;lease;{duid};{iaid}     		{json}  lease
 // --------------------------------------------------
 
 func (r Redis) AcknowledgeV4ByMAC(info *v4.ClientInfoV4, xid, mac, ip string) error {
-	return r.acknowledgeV4(info, xid, keyMAC(4, mac, ip))
+	return r.acknowledgeV4(info, xid, keyMAC(4, mac))
 }
 
 func (r Redis) AcknowledgeV4ByID(info *v4.ClientInfoV4, xid, duid, iaid, ip string) error {
-	return r.acknowledgeV4(info, xid, keyClientID(4, duid, iaid, ip))
+	return r.acknowledgeV4(info, xid, keyClientID(4, duid, iaid))
 }
 
 func (r Redis) ReserveV4(info *v4.ClientInfoV4, xid string) error {
@@ -36,11 +36,11 @@ func (r Redis) ReserveV4(info *v4.ClientInfoV4, xid string) error {
 }
 
 func (r Redis) ReleaseV4ByMAC(xid, mac, ip string) error {
-	return r.removeLease(keyMAC(4, mac, ip))
+	return r.removeLease(keyMAC(4, mac))
 }
 
 func (r Redis) ReleaseV4ByID(xid, duid, iaid, ip string) error {
-	return r.removeLease(keyClientID(4, duid, iaid, ip))
+	return r.removeLease(keyClientID(4, duid, iaid))
 }
 
 func (r Redis) acknowledgeV4(info *v4.ClientInfoV4, xid, leaseKey string) error {
@@ -113,8 +113,8 @@ func (r Redis) removeLease(key string) error {
 		log.Printf("Error while releasing '%s' from cache.", key)
 		return result.Err()
 	} else if val := result.Val(); val > 1 {
-		log.Printf("%d KEYS ARE MORE THAN ONE REMOVED KEY! THIS SHOULD NOT HAPPEN!", val)
-		return fmt.Errorf("%d keys removed instead of 0 or 1", val)
+		log.Printf("%d KEYS WERE REMOVED! THIS SHOULD NOT HAPPEN! Key was '%s'.", val, key)
+		return fmt.Errorf("%d keys removed for '%s' instead of 0 or 1", val, key)
 	}
 
 	log.Printf("Released %d keys (0 and 1 are ok).", result.Val())
@@ -147,10 +147,10 @@ func keyXID(family uint8, xid string) string {
 	return fmt.Sprintf("v%d;%s", family, xid)
 }
 
-func keyMAC(family uint8, mac, ip string) string {
-	return fmt.Sprintf("v%d;%s;%s", family, strings.ToUpper(mac), ip)
+func keyMAC(family uint8, mac string) string {
+	return fmt.Sprintf("v%d;%s", family, strings.ToUpper(mac))
 }
 
-func keyClientID(family uint8, duid, iaid, ip string) string {
-	return fmt.Sprintf("v%d;%s;%s;%s", family, duid, iaid, ip)
+func keyClientID(family uint8, duid, iaid string) string {
+	return fmt.Sprintf("v%d;%s;%s", family, duid, iaid)
 }

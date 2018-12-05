@@ -8,7 +8,6 @@ import (
 type ClientInfoV6 struct {
 	Temporary bool
 	IPAddrs   []net.IP
-	IPMasks   []net.IPMask
 	//NextServer   net.IP
 	//BootFileName string
 	Timeouts struct {

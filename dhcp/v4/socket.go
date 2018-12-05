@@ -151,10 +151,25 @@ func (c *DHCPV4Conn) writeTo(eth *layers.Ethernet, ip4 *layers.IPv4, udp *layers
 		FixLengths:       true,
 	}
 
-	gopacket.Payload(payload).SerializeTo(buf, opts)
-	udp.SerializeTo(buf, opts)
-	ip4.SerializeTo(buf, opts)
-	eth.SerializeTo(buf, opts)
+	err := gopacket.Payload(payload).SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	err = udp.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	err = ip4.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	err = eth.SerializeTo(buf, opts)
+	if err != nil {
+		return 0, err
+	}
 
 	pack := buf.Bytes()
 

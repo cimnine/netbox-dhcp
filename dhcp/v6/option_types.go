@@ -2,22 +2,15 @@ package v6
 
 import (
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"net"
 
 	"github.com/google/gopacket/layers"
 )
 
-type iaNontemporaryAddress struct {
-	iaid             [4]byte
-	t1               uint32
-	t2               uint32
-	addressOptions   []iaAddress
-	statusCodeOption statusCodeOption
-	otherOptions     []iaOptions
-}
-
-type iaOptions struct {
-	code uint16
+type iaOption struct {
+	code layers.DHCPv6Opt
 	data []byte
 }
 
@@ -26,26 +19,51 @@ type iaAddress struct {
 	preferredLifetime uint32
 	validLifetime     uint32
 	statusCodeOption  statusCodeOption
-	otherOptions      []iaOptions
+	otherOptions      []iaOption
 }
 
 type statusCodeOption struct {
-	len           uint16
 	statusCode    uint16
 	statusMessage string
 }
 
-// checkIANAs returns true if all addresses of the given IANA option are also in the clientInfo
-func CheckIANAs(ianaOpts layers.DHCPv6Options, clientInfo ClientInfoV6) bool {
-	ianas := parseIANAOptions(ianaOpts)
+type IANontemporaryAddress struct {
+	IAID             IAID
+	T1               uint32
+	T2               uint32
+	AddressOptions   []iaAddress
+	StatusCodeOption statusCodeOption
+	OtherOptions     []iaOption
+}
 
-	for _, ipRequestedByClient := range ianas {
-		for _, ipOption := range ipRequestedByClient.addressOptions {
-			if !isIpInList(ipOption.addr, clientInfo.IPAddrs) {
-				return false
-			}
+type IAID [4]byte
+
+func (iaid IAID) String() string {
+	return hex.EncodeToString(iaid[:])
+}
+
+func NewIAID(iaid string) (IAID, error) {
+	bytes, err := hex.DecodeString(iaid)
+
+	if err != nil {
+		return IAID{}, err
+	}
+
+	if len(bytes) != 4 {
+		return IAID{}, fmt.Errorf("'%s' does not decode to exactly 4 bytes", iaid)
+	}
+
+	return IAID{bytes[0], bytes[1], bytes[2], bytes[3]}, nil
+}
+
+// checkIANAs returns true if all addresses of the given IANA option are also in the clientInfo
+func CheckIANA(iana IANontemporaryAddress, clientInfo ClientInfoV6) bool {
+	for _, ipOption := range iana.AddressOptions {
+		if !isIpInList(ipOption.addr, clientInfo.IPAddrs) {
+			return false
 		}
 	}
+
 	return true
 }
 
@@ -60,41 +78,61 @@ func isIpInList(ip net.IP, list []net.IP) bool {
 }
 
 // parseIANAOptions parses an IA Non-Temporary Address DHCPv6 Option
-func parseIANAOptions(ianaOpts layers.DHCPv6Options) []iaNontemporaryAddress {
-	var nontemporaryAddresses []iaNontemporaryAddress
+func ParseIANAOption(ianaOpt layers.DHCPv6Option) IANontemporaryAddress {
+	iana := IANontemporaryAddress{}
+	copy(iana.IAID[:], ianaOpt.Data[0:4])
 
-	for _, ianaOpt := range ianaOpts {
-		code := layers.DHCPv6Opt(binary.BigEndian.Uint16(ianaOpt.Data[:2]))
+	addrOpt, statusOpt, otherOpt := parseIANASubOptions(ianaOpt.Data[12:])
 
-		nontemporaryAddress := iaNontemporaryAddress{}
-		switch code {
-		case layers.DHCPv6OptIAAddr:
-			addrOpt := iaAddress{
-				addr:              ianaOpt.Data[4:20],
-				preferredLifetime: binary.BigEndian.Uint32(ianaOpt.Data[20:24]),
-				validLifetime:     binary.BigEndian.Uint32(ianaOpt.Data[24:28]),
-			}
+	iana.AddressOptions = addrOpt
+	iana.StatusCodeOption = statusOpt
+	iana.OtherOptions = otherOpt
 
-			nontemporaryAddress.addressOptions = append(nontemporaryAddress.addressOptions, addrOpt)
+	return iana
+}
 
-			statusCodeOption, ok := findStatusCodeOpt(ianaOpt.Data[28:])
-			if ok {
-				nontemporaryAddress.statusCodeOption = statusCodeOption
-			}
-		case layers.DHCPv6OptStatusCode:
-			statusCode := statusCodeOption{
-				len:           binary.BigEndian.Uint16(ianaOpt.Data[2:4]),
-				statusCode:    binary.BigEndian.Uint16(ianaOpt.Data[4:6]),
-				statusMessage: string(ianaOpt.Data[6:]),
-			}
-
-			nontemporaryAddress.statusCodeOption = statusCode
-		}
-
-		nontemporaryAddresses = append(nontemporaryAddresses, nontemporaryAddress)
+func parseIANASubOptions(data []byte) ([]iaAddress, statusCodeOption, []iaOption) {
+	if len(data) < 4 {
+		return []iaAddress{}, statusCodeOption{}, []iaOption{}
 	}
 
-	return nontemporaryAddresses
+	code := layers.DHCPv6Opt(binary.BigEndian.Uint16(data[:2]))
+	len := binary.BigEndian.Uint16(data[2:4])
+
+	thisOptData := data[:4+len]
+	rest := data[4+len:]
+
+	iaAddresses, statusCodeOpt, iaOptions := parseIANASubOptions(rest)
+
+	switch code {
+	case layers.DHCPv6OptIAAddr:
+		addrOpt := iaAddress{
+			addr:              thisOptData[4:20],
+			preferredLifetime: binary.BigEndian.Uint32(thisOptData[20:24]),
+			validLifetime:     binary.BigEndian.Uint32(thisOptData[24:28]),
+		}
+
+		statusCodeOption, ok := findStatusCodeOpt(thisOptData[28:])
+		if ok {
+			addrOpt.statusCodeOption = statusCodeOption
+		}
+
+		iaAddresses = append(iaAddresses, addrOpt)
+	case layers.DHCPv6OptStatusCode:
+		statusCodeOpt = statusCodeOption{
+			statusCode:    binary.BigEndian.Uint16(thisOptData[4:6]),
+			statusMessage: string(thisOptData[6:]),
+		}
+	default:
+		otherOpt := iaOption{
+			code: code,
+			data: thisOptData,
+		}
+
+		iaOptions = append(iaOptions, otherOpt)
+	}
+
+	return iaAddresses, statusCodeOpt, iaOptions
 }
 
 // findStatusCodeOpt browses through the given data to find a DHCPv6 Status Option. It does this recursively.
@@ -110,7 +148,6 @@ func findStatusCodeOpt(data []byte) (statusCodeOption, bool) {
 	optCode := layers.DHCPv6Opt(binary.BigEndian.Uint16(data[0:2]))
 	if optCode == layers.DHCPv6OptStatusCode {
 		option := statusCodeOption{
-			len:           binary.BigEndian.Uint16(data[2:4]),
 			statusCode:    binary.BigEndian.Uint16(data[4:6]),
 			statusMessage: string(data[6 : 4+endOfOption]),
 		}

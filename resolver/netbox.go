@@ -17,7 +17,7 @@ type Netbox struct {
 	Client *netbox.Client
 }
 
-func (n Netbox) SolicitationV6(info *v6.ClientInfoV6, clientID, clientMAC string) (bool, error) {
+func (n Netbox) SolicitationV6(info *v6.ClientInfoV6, clientID, clientMAC string, iaid string) (bool, error) {
 	_, err := n.findDeviceByDUID(clientID)
 	if err == nil {
 		return true, nil

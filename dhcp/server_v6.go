@@ -65,7 +65,7 @@ func (s *ServerV6) Start() {
 
 func (s *ServerV6) Stop() {
 	s.shutdown = true
-	s.conn.Close()
+	_ = s.conn.Close()
 }
 
 func (s *ServerV6) handlePacket(dhcp layers.DHCPv6, srcIP net.IP, srcMAC net.HardwareAddr) {
@@ -104,6 +104,10 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 		return
 	}
 
+	// TODO handle relay case, i.e. extract original message and such
+	dstIP := srcIP
+	dstMAC := srcMAC
+
 	rawClientDUID, clientDUID, err := extractClientDUID(optMap)
 	if err != nil {
 		log.Printf("Error while extracting DHCPv6 Client DUID from '%s' ('%s'): %s", srcIP, srcMAC, err)
@@ -122,33 +126,127 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 		clientMAC = srcMAC
 	}
 
-	clientInfo := v6.ClientInfoV6{}
-
-	ok, err := s.Resolver.SolicitationV6(&clientInfo, clientDUID, clientMAC.String())
-	if err != nil {
-		log.Printf("DHCPv6 SOLICITATION failed for client ID '%s' / MAC '%s' because of an error: %s", clientDUID, srcMAC, err)
-		return
-	} else if !ok {
-		log.Printf("Client with ID '%s' / MAC '%s' not found, ignoring DHCPv6 SOLICITATION", clientDUID, srcMAC)
-		return
-	}
-
-	_, rapidCommit := optMap[layers.DHCPv6OptRapidCommit]
-	if rapidCommit {
-		log.Printf("DHCPv6 RAPID_COMMIT option detected for client DUID '%s' / MAC '%s'", clientDUID, srcMAC)
+	if _, rapidCommitRequested := optMap[layers.DHCPv6OptRapidCommit]; rapidCommitRequested {
+		log.Printf("DHCPv6 RAPID_COMMIT option detected for client DUID '%s' / MAC '%s'", clientDUID, clientMAC)
 
 		s.replyToRequest(solicit, srcIP, srcMAC, true)
 		return
 	}
 
-	// build response
-	serverDUID, err := s.dhcpConfig.ServerDUID()
-	if err != nil {
-		log.Printf("DHCPv6 Server DUID improperly configured: %s", err)
+	// TODO support temporary address assignments
+	if _, hasIATA := optMap[layers.DHCPv6OptIATA]; hasIATA {
+		statusCode := layers.DHCPv6StatusCodeNotOnLink
+		statusMessage := "Temporary Address detected, but that's not supported by this server"
+		status := statusOption(statusCode, statusMessage)
+
+		err = s.sendAdvertise(rawClientDUID, layers.DHCPv6Options{status}, solicit.TransactionID, dstIP, dstMAC)
+		if err != nil {
+			log.Printf(
+				"Can't send DHCPv6 ADVERTISE with status %d ('%s') for client ID '%s' / MAC '%s' to '%s' ('%s'): %s",
+				statusCode, statusCode.String(), clientDUID, clientMAC, dstIP, dstMAC, err)
+		}
 		return
 	}
 
-	options := serverAndClientIDOptions(serverDUID, rawClientDUID)
+	inIANAOpts, hasIANA := optMap[layers.DHCPv6OptIANA]
+	outIANAOpts := make(layers.DHCPv6Options, len(inIANAOpts))
+	if hasIANA {
+		for _, inIanaOpt := range inIANAOpts {
+			outIanaOpt, statusOpt, iaid, err := s.handleIANA(inIanaOpt, clientDUID, clientMAC)
+
+			if err != nil {
+				err = s.sendAdvertise(rawClientDUID, layers.DHCPv6Options{statusOpt}, solicit.TransactionID, dstIP, dstMAC)
+				if err != nil {
+					log.Printf(
+						"Can't send DHCPv6 ADVERTISE with status != success for client ID '%s' / MAC '%s' to '%s' ('%s'): %s",
+						clientDUID, clientMAC, dstIP, dstMAC, err)
+				}
+
+				log.Printf("Can't match IPs to the IA_NA with IAID '%s' for the client with ID '%s' / MAC '%s': %s",
+					iaid, clientDUID, clientMAC, err)
+				return
+			}
+
+			outIANAOpts = append(outIANAOpts, outIanaOpt)
+		}
+	}
+
+	if len(outIANAOpts) == 0 {
+		statusCode := layers.DHCPv6StatusCodeNoAddrsAvail
+		statusMessage := "No addresses found for your machine."
+		status := statusOption(statusCode, statusMessage)
+		err = s.sendAdvertise(rawClientDUID, layers.DHCPv6Options{status}, solicit.TransactionID, dstIP, dstMAC)
+
+		if err != nil {
+			log.Printf(
+				"Can't send DHCPv6 ADVERTISE with status %d ('%s') for client ID '%s' / MAC '%s' to '%s' ('%s'): %s",
+				statusCode, statusCode.String(), clientDUID, clientMAC, dstIP, dstMAC, err)
+		}
+		return
+	}
+
+	successOption := statusOption(layers.DHCPv6StatusCodeSuccess, "")
+
+	err = s.sendAdvertise(rawClientDUID, append(outIANAOpts, successOption), solicit.TransactionID, dstIP, dstMAC)
+	if err != nil {
+		log.Printf("Can't send DHCPv6 ADVERTISE for client ID '%s' / MAC '%s' to '%s' ('%s'): %s",
+			clientDUID, clientMAC, dstIP, dstMAC, err)
+		return
+	}
+
+	log.Printf("Sent a DHCPv6 ADVERTISE for client ID '%s' / MAC '%s' msg to '%s' ('%s')",
+		clientDUID, clientMAC, dstIP, dstMAC)
+}
+
+// handleIANA returns the IPs returned for the client as DHCPv6 IA_NA Option.
+// See https://tools.ietf.org/html/rfc8415#section-21.4
+// It also checks if the IPs requested by the client match the IPs reserved for the client and returns
+// an error and a STATUS_CODE NOT_ON_LINK if a missmatch is detected.
+func (s *ServerV6) handleIANA(inIanaOpt layers.DHCPv6Option, clientDUID string, clientMAC net.HardwareAddr) (layers.DHCPv6Option, layers.DHCPv6Option, string, error) {
+	var outIanaOpt layers.DHCPv6Option
+	var outStatusOpt layers.DHCPv6Option
+
+	iana := v6.ParseIANAOption(inIanaOpt)
+	iaid := iana.IAID.String()
+
+	clientInfo := v6.ClientInfoV6{}
+	ok, err := s.Resolver.SolicitationV6(&clientInfo, clientDUID, clientMAC.String(), iaid)
+	if err != nil {
+		log.Printf(
+			"DHCPv6 SOLICITATION failed for client ID '%s' / MAC '%s' because of an error: %s",
+			clientDUID, clientMAC, err)
+		return outIanaOpt, outStatusOpt, iaid, err
+	} else if !ok {
+		log.Printf("Client with ID '%s' / MAC '%s' not found, ignoring DHCPv6 SOLICITATION", clientDUID, clientMAC)
+		return outIanaOpt, outStatusOpt, iaid,
+			fmt.Errorf("client with ID '%s' / MAC '%s' not found", clientDUID, clientMAC)
+	}
+
+	if !v6.CheckIANA(iana, clientInfo) {
+		statusCode := layers.DHCPv6StatusCodeNotOnLink
+		statusMessage := "According to this server's information some non-temporary IP addresses (IA_NA) are not designated for your machine."
+
+		outStatusOpt = statusOption(statusCode, statusMessage)
+		return outIanaOpt, outStatusOpt, iaid,
+			fmt.Errorf("some IA_NA the client requested are not reserved for that client")
+	}
+
+	outIanaOpt = layers.DHCPv6Option{
+		Code: layers.DHCPv6OptIANA,
+		// TODO fill in the rest
+	}
+
+	return outIanaOpt, outStatusOpt, iaid, nil
+}
+
+func (s *ServerV6) sendAdvertise(rawClientDUID []byte, incomingOpts layers.DHCPv6Options, transactionID []byte, dstIP net.IP, dstMAC net.HardwareAddr) error {
+	options, err := s.serverAndClientIDOptions(rawClientDUID)
+	if err != nil {
+		log.Printf("Error while construction DHCPv6 ADVERTISE: Can't create Server DUID or Client DUID: %s", err)
+		return err
+	}
+
+	options = append(options, incomingOpts...)
 
 	if s.listenerConfig.AdvertiseUnicast {
 		allowUnicast := layers.DHCPv6Option{
@@ -159,44 +257,21 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 		options = append(options, allowUnicast)
 	}
 
-	if _, hasIATA := optMap[layers.DHCPv6OptIATA]; hasIATA {
-		// TODO support temporary address assignments
-		options = append(options,
-			statusOption(consts.DHCPv6StatusCodeNotOnLink,
-				"Temporary Address detected, but that's not supported by this server"))
-	} else if len(clientInfo.IPAddrs) == 0 {
-		options = append(options,
-			statusOption(consts.DHCPv6StatusCodeNoAddressesAvailable, "Not yet implemented"))
-	} else if ianaOpts, hasIANA := optMap[layers.DHCPv6OptIANA]; hasIANA && !v6.CheckIANAs(ianaOpts, clientInfo) {
-		options = append(options,
-			statusOption(consts.DHCPv6StatusCodeNotOnLink,
-				"According to this server's information some non-temporary IP addresses (IA_NA) are not designated for your machine."))
-	} else {
-		// TODO add IA and other options from clientInfo
-	}
-
 	advertise := layers.DHCPv6{
 		MsgType:       layers.DHCPv6MsgTypeAdverstise,
-		TransactionID: solicit.TransactionID,
+		TransactionID: transactionID,
 		Options:       options,
 	}
 
-	fmt.Printf("%s", advertise.Options.String())
-
-	var dstIP net.IP
-	var dstMAC net.HardwareAddr
-
-	dstIP = srcIP   // TODO handle relay case
-	dstMAC = srcMAC // TODO handle relay case
-
 	err = s.conn.WriteTo(advertise, dstIP, dstMAC)
+
 	if err != nil {
 		log.Printf("Can't send DHCPv6 ADVERTISE to '%s' ('%s'): %s", dstIP, dstMAC, err)
-		return
+		return err
 	}
 
-	log.Printf("Sent a DHCPv6 ADVERTISE for client ID '%s' / MAC '%s' msg to '%s' ('%s')",
-		clientDUID, clientMAC, dstIP, dstMAC)
+	log.Printf("Sent a DHCPv6 ADVERTISE to '%s' ('%s')", dstIP, dstMAC)
+	return nil
 }
 
 func (s *ServerV6) getClientLLAddr(clientLLAddrOpt layers.DHCPv6Options) net.HardwareAddr {
@@ -227,12 +302,6 @@ func (s *ServerV6) replyToRequest(request layers.DHCPv6, srcIP net.IP, srcMAC ne
 		return
 	}
 
-	serverDUID, err := s.dhcpConfig.ServerDUID()
-	if err != nil {
-		log.Printf("DHCPv6 Server DUID improperly configured: %s", err)
-		return
-	}
-
 	// When the server receives a Request message via unicast from a client
 	// to which the server has not sent a unicast option, the server
 	// discards the Request message and responds with a Reply message
@@ -241,10 +310,14 @@ func (s *ServerV6) replyToRequest(request layers.DHCPv6, srcIP net.IP, srcMAC ne
 	// option from the client message, and no other options.
 	// https://tools.ietf.org/html/rfc3315#section-18.2.1
 	if !s.listenerConfig.AdvertiseUnicast && srcIP.IsGlobalUnicast() {
-		options := serverAndClientIDOptions(serverDUID, rawClientDUID)
+		options, err := s.serverAndClientIDOptions(rawClientDUID)
+		if err != nil {
+			log.Printf("Error constructing server DUID and/or client DUID: %s", err)
+			return
+		}
 
 		options = append(options, statusOption(
-			consts.DHCPv6StatusCodeUseMulticast, "the anycast option is not enabled"))
+			layers.DHCPv6StatusCodeUseMulticast, "the anycast option is not enabled"))
 
 		reply := layers.DHCPv6{
 			MsgType:       layers.DHCPv6MsgTypeReply,
@@ -321,7 +394,7 @@ func mapOpts(options layers.DHCPv6Options) dhcpv6OptMap {
 }
 
 // statusOption creates a status option from the given parameters
-func statusOption(statusCode consts.DHCPv6StatusCode, statusMessage string) layers.DHCPv6Option {
+func statusOption(statusCode layers.DHCPv6StatusCode, statusMessage string) layers.DHCPv6Option {
 	statusData := make([]byte, 2)
 	binary.BigEndian.PutUint16(statusData, uint16(statusCode))
 	statusData = append(statusData, statusMessage...)
@@ -334,7 +407,13 @@ func statusOption(statusCode consts.DHCPv6StatusCode, statusMessage string) laye
 }
 
 // serverAndClientIDOptions creates the server id option and the client id option and returns them together
-func serverAndClientIDOptions(serverDUID []byte, rawClientDUID []byte) layers.DHCPv6Options {
+func (s *ServerV6) serverAndClientIDOptions(rawClientDUID []byte) (layers.DHCPv6Options, error) {
+	serverDUID, err := s.dhcpConfig.ServerDUID()
+	if err != nil {
+		log.Printf("DHCPv6 Server DUID improperly configured: %s", err)
+		return nil, err
+	}
+
 	serverIdentifier := layers.DHCPv6Option{
 		Code: layers.DHCPv6OptServerID,
 		// Length is fixed by the serializer,
@@ -349,7 +428,7 @@ func serverAndClientIDOptions(serverDUID []byte, rawClientDUID []byte) layers.DH
 		serverIdentifier,
 		clientIdentifier,
 	}
-	return options
+	return options, nil
 }
 
 // parseClientDUID spreads the DUID type code from the content.
@@ -375,212 +454,3 @@ func parseClientDUID(duid []byte) (string, error) {
 			fmt.Errorf("unrecognized DUID type code '%d'", duidTypeCode)
 	}
 }
-
-//func (s *ServerV6) handleDecline(dhcpDecline *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-//  mac, xid := s.getTransactionIDAndMAC(dhcpDecline)
-//
-//  requestedIPOptions := dhcpDecline.GetOption(dhcpv4.OptionRequestedIPAddress)
-//  if len(requestedIPOptions) != 1 {
-//    log.Printf("%d IPs requested instead of one", len(requestedIPOptions))
-//    return
-//  }
-//
-//  optRequestedIPAddress, err := dhcpv4.ParseOptRequestedIPAddress(requestedIPOptions[0].ToBytes())
-//  if err != nil {
-//    log.Printf("Can't decypher the requested IP from '%s'", requestedIPOptions[0].String())
-//  }
-//
-//  requestedIP := optRequestedIPAddress.RequestedAddr.String()
-//
-//  log.Printf("DHCPDECLINE from MAC '%s' and IP '%s' in transaction '%s'", mac, requestedIP, xid)
-//
-//  s.Resolver.DeclineV6ByMAC(xid, mac, requestedIP)
-//}
-//
-//func (s *ServerV6) handleRelease(dhcpRelease *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-//  mac, xid := s.getTransactionIDAndMAC(dhcpRelease)
-//
-//  ip := dhcpRelease.ClientIPAddr()
-//  if ip == nil {
-//    log.Printf("DHCPRELEASE from MAC '%s' with no client IP", mac)
-//    return
-//  }
-//
-//  ip4 := ip.To4()
-//  if ip4 == nil || net.IPv4zero.Equal(ip4) || net.IPv4bcast.Equal(ip4) {
-//    log.Printf("DHCPRELEASE from MAC '%s' with invalid client IP '%s'", mac, ip)
-//    return
-//  }
-//
-//  log.Printf("DHCPRELEASE from MAC '%s' and IP '%s' in transaction '%s'", mac, ip4, xid)
-//
-//  s.Resolver.ReleaseV6ByMAC(xid, mac, ip4.String())
-//}
-//
-//func (s *ServerV6) replyToInform(dhcpInform *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-//  mac := dhcpInform.ClientHwAddrToString()
-//  log.Printf("DHCPINFORM for MAC '%s'", mac)
-//
-//  // TODO implement
-//}
-//
-//func (s *ServerV6) replyToRequest(dhcpRequest *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
-//  mac, xid := s.getTransactionIDAndMAC(dhcpRequest)
-//
-//  requestedIPOptions := dhcpRequest.GetOption(dhcpv4.OptionRequestedIPAddress)
-//  if len(requestedIPOptions) != 1 {
-//    log.Printf("%d IPs requested instead of one", len(requestedIPOptions))
-//    return
-//  }
-//
-//  optRequestedIPAddress, err := dhcpv4.ParseOptRequestedIPAddress(requestedIPOptions[0].ToBytes())
-//  if err != nil {
-//    log.Printf("Can't decypher the requested IP from '%s'", requestedIPOptions[0].String())
-//  }
-//
-//  requestedIP := optRequestedIPAddress.RequestedAddr.String()
-//  log.Printf("DHCPREQUEST requesting IP '%s' for MAC '%s' and transaction '%s'", requestedIP, mac, xid)
-//
-//  serverIPAddr := dhcpRequest.ServerIPAddr()
-//  if serverIPAddr != nil &&
-//    !serverIPAddr.Equal(net.IPv4zero) &&
-//    !serverIPAddr.Equal(net.IPv4bcast) &&
-//    !serverIPAddr.Equal(s.replyFrom) {
-//    log.Printf("DHCPREQUEST is not for us but for '%s'.", serverIPAddr.String())
-//    return
-//  }
-//
-//  clientInfo := resolver.NewClientInfoV6(s.dhcpConfig)
-//
-//  err = s.Resolver.AcknowledgeV6ByMAC(clientInfo, xid, mac, requestedIP)
-//  if err != nil {
-//    log.Printf("Error finding IP for MAC '%s': %s", mac, err)
-//    return
-//  }
-//
-//  dhcpACK, err := s.prepareAnswer(dhcpRequest, clientInfo, dhcpv4.MessageTypeAck)
-//  if err != nil {
-//    return
-//  }
-//
-//  dstIP, dstMAC := s.determineDstAddr(dhcpRequest, dhcpACK, srcMAC)
-//
-//  log.Printf("Sending DHCPACK to '%s' from '%s'", dstIP.String(), s.replyFrom)
-//
-//  err = s.conn.WriteTo(*dhcpACK, dstIP, dstMAC)
-//  if err != nil {
-//    log.Printf("Can't send DHCPOFFER to '%s' ('%s'): %s", dstIP.String(), srcMAC, err)
-//  }
-//
-//  return
-//}
-//
-//func (s *ServerV6) getTransactionIDAndMAC(dhcpMsg *dhcpv4.DHCPv4) (string, string) {
-//  mac := dhcpMsg.ClientHwAddrToString()
-//  xid := strconv.FormatUint(uint64(dhcpMsg.TransactionID()), 16)
-//  return mac, xid
-//}
-//
-//func (s *ServerV6) determineDstAddr(in *dhcpv4.DHCPv4, out *dhcpv4.DHCPv4, srcMAC *net.HardwareAddr) (net.IP, net.HardwareAddr) {
-//  /*
-//       From the RFC2131, Page 23:
-//
-//       If the 'giaddr' field in a DHCP message from a client is non-zero,
-//       the server sends any return messages to the 'DHCP server' port on the
-//       BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
-//       field is zero and the 'ciaddr' field is nonzero, then the server
-//       unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
-//       If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
-//       set, then the server broadcasts DHCPOFFER and DHCPACK messages to
-//       0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
-//       'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
-//       messages to the client's hardware address and 'yiaddr' address.  In
-//       all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
-//       messages to 0xffffffff.
-//  */
-//
-//  if in.GatewayIPAddr() != nil && // 'giaddr' is non-zero
-//    !in.GatewayIPAddr().Equal(net.IPv4zero) {
-//    out.SetBroadcast()
-//
-//    // TODO srcMAC should be resolved using ARP
-//    return in.GatewayIPAddr(), *srcMAC
-//  } else if in.ClientIPAddr() != nil && // 'giaddr' is zero, 'ciaddr' is non-zero
-//    !in.ClientIPAddr().Equal(net.IPv4zero) {
-//
-//    // TODO srcMAC should be resolved using ARP
-//    return in.ClientIPAddr(), *srcMAC
-//  } else if in.IsBroadcast() { // 'giaddr' and 'ciaddr' are zero, but broadcast flag
-//    return net.IPv4bcast, net.HardwareAddr{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-//  } else {
-//    // Must avoid ARP (because client does not have IP yet)
-//    addr := out.ClientHwAddr()
-//    return out.YourIPAddr(), net.HardwareAddr(addr[:6])
-//  }
-//}
-//
-//func (s *ServerV6) prepareAnswer(in *dhcpv4.DHCPv4, clientInfo *v4.ClientInfoV6, messageType dhcpv4.MessageType) (*dhcpv4.DHCPv4, error) {
-//  out, err := dhcpv4.New()
-//  if err != nil {
-//    log.Print("Can't create response.", err)
-//    return nil, err
-//  }
-//
-//  siaddr := net.IPv4zero
-//  if clientInfo.NextServer != nil {
-//    siaddr = clientInfo.NextServer
-//  }
-//
-//  hwAddr := in.ClientHwAddr()
-//  out.SetOpcode(dhcpv4.OpcodeBootReply)
-//  out.SetHopCount(0)
-//  out.SetTransactionID(in.TransactionID())
-//  out.SetNumSeconds(0)
-//  out.SetClientIPAddr(net.IPv4zero)
-//  out.SetYourIPAddr(clientInfo.IPAddrs)
-//  out.SetServerIPAddr(siaddr)
-//  out.SetFlags(in.Flags())
-//  out.SetGatewayIPAddr(in.GatewayIPAddr())
-//  out.SetClientHwAddr(hwAddr[:])
-//  out.SetServerHostName([]byte(s.replyFromHostname))
-//
-//  out.AddOption(&dhcpv4.OptMessageType{MessageType: messageType})
-//  out.AddOption(&dhcpv4.OptServerIdentifier{ServerID: s.replyFrom})
-//  out.AddOption(&dhcpv4.OptSubnetMask{SubnetMask: clientInfo.IPMasks})
-//
-//  if clientInfo.Timeouts.Lease > 0 {
-//    leaseTime := util.SafeConvertToUint32(clientInfo.Timeouts.Lease.Seconds())
-//    log.Printf("Lease Time: %s -> %d", clientInfo.Timeouts.Lease.String(), leaseTime)
-//    out.AddOption(&dhcpv4.OptIPAddressLeaseTime{LeaseTime: leaseTime})
-//  }
-//  if clientInfo.Timeouts.T1RenewalTime > 0 {
-//    renewalTime := util.SafeConvertToUint32(clientInfo.Timeouts.T1RenewalTime.Seconds())
-//    log.Printf("Renewal T1 Time: %s -> %d", clientInfo.Timeouts.T1RenewalTime.String(), renewalTime)
-//    out.AddOption(&v4.OptRenewalTime{RenewalTime: renewalTime})
-//  }
-//  if clientInfo.Timeouts.T2RebindingTime > 0 {
-//    rebindingTime := util.SafeConvertToUint32(clientInfo.Timeouts.T2RebindingTime.Seconds())
-//    log.Printf("Rebinding T2 Time: %s -> %d", clientInfo.Timeouts.T2RebindingTime.String(), rebindingTime)
-//    out.AddOption(&v4.OptRebindingTime{RebindingTime: rebindingTime})
-//  }
-//  if clientInfo.Options.HostName != "" {
-//    out.AddOption(&dhcpv4.OptHostName{HostName: clientInfo.Options.HostName})
-//  }
-//  if clientInfo.Options.DomainName != "" {
-//    out.AddOption(&dhcpv4.OptDomainName{DomainName: clientInfo.Options.DomainName})
-//  }
-//  if len(clientInfo.Options.DomainNameServers) > 0 {
-//    out.AddOption(&dhcpv4.OptDomainNameServer{NameServers: clientInfo.Options.DomainNameServers})
-//  }
-//  if len(clientInfo.Options.Routers) > 0 {
-//    out.AddOption(&dhcpv4.OptRouter{Routers: clientInfo.Options.Routers})
-//  }
-//  if len(clientInfo.Options.NTPServers) > 0 {
-//    out.AddOption(&dhcpv4.OptNTPServers{NTPServers: clientInfo.Options.NTPServers})
-//  }
-//  if clientInfo.BootFileName != "" {
-//    out.AddOption(&dhcpv4.OptBootfileName{BootfileName: []byte(clientInfo.BootFileName)})
-//  }
-//
-//  return out, nil
-//}

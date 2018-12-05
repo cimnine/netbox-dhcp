@@ -26,8 +26,8 @@ type CachingResolver struct {
 	Cache  Cacher
 }
 
-func (r CachingResolver) SolicitationV6(info *v6.ClientInfoV6, clientID, clientMAC string) (bool, error) {
-	ok, err := r.Source.SolicitationV6(info, clientID, clientMAC)
+func (r CachingResolver) SolicitationV6(info *v6.ClientInfoV6, clientID, clientMAC string, iaid string) (bool, error) {
+	ok, err := r.Source.SolicitationV6(info, clientID, clientMAC, iaid)
 
 	if err != nil {
 		return false, err
