@@ -152,7 +152,31 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 	outIANAOpts := make(layers.DHCPv6Options, len(inIANAOpts))
 	if hasIANA {
 		for _, inIanaOpt := range inIANAOpts {
-			outIanaOpt, statusOpt, iaid, err := s.handleIANA(inIanaOpt, clientDUID, clientMAC)
+			clientInfo := resolver.NewClientInfoV6(s.dhcpConfig)
+
+			iana := v6.ParseIANAOption(inIanaOpt)
+			iaid := iana.IAID.String()
+
+			ok, err := s.Resolver.SolicitationV6(&clientInfo, clientDUID, clientMAC.String(), iaid)
+
+			if err != nil {
+				log.Printf(
+					"DHCPv6 SOLICITATION failed for client ID '%s' / MAC '%s' and IAID '%s' because of an error: %s",
+					clientDUID, clientMAC, iaid, err)
+				continue
+			} else if !ok {
+				log.Printf(
+					"Client with ID '%s' / MAC '%s' and IAID '%s' not found.",
+					clientDUID, clientMAC, iaid)
+				continue
+			} else if len(clientInfo.IPAddrs) == 0 {
+				log.Printf(
+					"No IPs for the Client with ID '%s' / MAC '%s' and IAID '%s' not found.",
+					clientDUID, clientMAC, iaid)
+				continue
+			}
+
+			outIanaOpt, statusOpt, err := s.handleIANA(iana, clientInfo, clientDUID, clientMAC)
 
 			if err != nil {
 				err = s.sendAdvertise(rawClientDUID, layers.DHCPv6Options{statusOpt}, solicit.TransactionID, dstIP, dstMAC)
@@ -162,7 +186,8 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 						clientDUID, clientMAC, dstIP, dstMAC, err)
 				}
 
-				log.Printf("Can't match IPs to the IA_NA with IAID '%s' for the client with ID '%s' / MAC '%s': %s",
+				log.Printf(
+					"Can't match IPs to the IA_NA with IAID '%s' for the client with ID '%s' / MAC '%s': %s",
 					iaid, clientDUID, clientMAC, err)
 				return
 			}
@@ -202,41 +227,36 @@ func (s *ServerV6) replyToSolicit(solicit layers.DHCPv6, srcIP net.IP, srcMAC ne
 // See https://tools.ietf.org/html/rfc8415#section-21.4
 // It also checks if the IPs requested by the client match the IPs reserved for the client and returns
 // an error and a STATUS_CODE NOT_ON_LINK if a missmatch is detected.
-func (s *ServerV6) handleIANA(inIanaOpt layers.DHCPv6Option, clientDUID string, clientMAC net.HardwareAddr) (layers.DHCPv6Option, layers.DHCPv6Option, string, error) {
+func (s *ServerV6) handleIANA(iana v6.IANontemporaryAddress, clientInfo v6.ClientInfoV6, clientDUID string, clientMAC net.HardwareAddr) (layers.DHCPv6Option, layers.DHCPv6Option, error) {
 	var outIanaOpt layers.DHCPv6Option
 	var outStatusOpt layers.DHCPv6Option
 
-	iana := v6.ParseIANAOption(inIanaOpt)
-	iaid := iana.IAID.String()
-
-	clientInfo := v6.ClientInfoV6{}
-	ok, err := s.Resolver.SolicitationV6(&clientInfo, clientDUID, clientMAC.String(), iaid)
-	if err != nil {
-		log.Printf(
-			"DHCPv6 SOLICITATION failed for client ID '%s' / MAC '%s' because of an error: %s",
-			clientDUID, clientMAC, err)
-		return outIanaOpt, outStatusOpt, iaid, err
-	} else if !ok {
-		log.Printf("Client with ID '%s' / MAC '%s' not found, ignoring DHCPv6 SOLICITATION", clientDUID, clientMAC)
-		return outIanaOpt, outStatusOpt, iaid,
-			fmt.Errorf("client with ID '%s' / MAC '%s' not found", clientDUID, clientMAC)
-	}
+	log.Printf("%d IPv6s to assign to the client ID '%s' / MAC '%s'.", len(clientInfo.IPAddrs), clientDUID, clientMAC) // TODO remove
 
 	if !v6.CheckIANA(iana, clientInfo) {
 		statusCode := layers.DHCPv6StatusCodeNotOnLink
 		statusMessage := "According to this server's information some non-temporary IP addresses (IA_NA) are not designated for your machine."
 
 		outStatusOpt = statusOption(statusCode, statusMessage)
-		return outIanaOpt, outStatusOpt, iaid,
+		return outIanaOpt, outStatusOpt,
 			fmt.Errorf("some IA_NA the client requested are not reserved for that client")
+	}
+
+	options, err := v6.EncodeOptions(iana.IAID, clientInfo)
+	if err != nil {
+		log.Printf(
+			"DHCPv6 SOLICITAION failed for the client ID '%s' / MAC '%s' because of an error while building the response: %s",
+			clientDUID, clientMAC)
+		return outIanaOpt, outStatusOpt, err
 	}
 
 	outIanaOpt = layers.DHCPv6Option{
 		Code: layers.DHCPv6OptIANA,
-		// TODO fill in the rest
+		// Length: 0, fixed by the serializer
+		Data: options,
 	}
 
-	return outIanaOpt, outStatusOpt, iaid, nil
+	return outIanaOpt, outStatusOpt, nil
 }
 
 func (s *ServerV6) sendAdvertise(rawClientDUID []byte, incomingOpts layers.DHCPv6Options, transactionID []byte, dstIP net.IP, dstMAC net.HardwareAddr) error {
@@ -260,6 +280,7 @@ func (s *ServerV6) sendAdvertise(rawClientDUID []byte, incomingOpts layers.DHCPv
 	advertise := layers.DHCPv6{
 		MsgType:       layers.DHCPv6MsgTypeAdverstise,
 		TransactionID: transactionID,
+		HopCount:      0,
 		Options:       options,
 	}
 
@@ -343,7 +364,6 @@ func (s *ServerV6) replyToRequest(request layers.DHCPv6, srcIP net.IP, srcMAC ne
 
 		return
 	}
-
 }
 
 // extractClientDUID returns the rawClientDUID for use in the response, and the clientDUID for use in a lookup

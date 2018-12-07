@@ -97,7 +97,7 @@ func (s *ServerV4) Start() {
 
 func (s *ServerV4) Stop() {
 	s.shutdown = true
-	s.conn.Close()
+	_ = s.conn.Close()
 }
 
 func (s *ServerV4) handlePacket(dhcp dhcpv4.DHCPv4, srcIP net.IP, srcMAC net.HardwareAddr) {
@@ -137,7 +137,7 @@ func (s *ServerV4) handleDecline(dhcpDecline *dhcpv4.DHCPv4, srcIP *net.IP, srcM
 
 	log.Printf("DHCPDECLINE from MAC '%s' and IPv4 '%s' in transaction '%s'", mac, requestedIP, xid)
 
-	s.Resolver.DeclineV4ByMAC(xid, mac, requestedIP)
+	_ = s.Resolver.DeclineV4ByMAC(xid, mac, requestedIP)
 }
 
 func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {
@@ -157,7 +157,7 @@ func (s *ServerV4) handleRelease(dhcpRelease *dhcpv4.DHCPv4, srcIP *net.IP, srcM
 
 	log.Printf("DHCPRELEASE from MAC '%s' and IPv4 '%s' in transaction '%s'", mac, ip4, xid)
 
-	s.Resolver.ReleaseV4ByMAC(xid, mac, ip4.String())
+	_ = s.Resolver.ReleaseV4ByMAC(xid, mac, ip4.String())
 }
 
 func (s *ServerV4) replyToInform(dhcpInform *dhcpv4.DHCPv4, srcIP *net.IP, srcMAC *net.HardwareAddr) {

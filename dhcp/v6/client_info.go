@@ -11,15 +11,14 @@ type ClientInfoV6 struct {
 	//NextServer   net.IP
 	//BootFileName string
 	Timeouts struct {
-		Reservation     time.Duration
-		Lease           time.Duration
-		T1RenewalTime   time.Duration
-		T2RebindingTime time.Duration
+		ValidLifetime     time.Duration
+		PreferredLifetime time.Duration
+		T1RenewalTime     time.Duration
+		T2RebindingTime   time.Duration
 	}
 	Options struct {
 		HostName          string
 		DomainName        string
-		Routers           []net.IP
 		DomainNameServers []net.IP
 		NTPServers        []net.IP
 	}

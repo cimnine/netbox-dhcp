@@ -3,13 +3,12 @@ package v6
 import (
 	"errors"
 	"fmt"
-	"log"
-	"net"
-	"regexp"
-
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/mdlayher/raw"
+	"log"
+	"net"
+	"regexp"
 )
 
 // This is the aprox. minimal size of a DHCP packet
@@ -206,6 +205,11 @@ func (c *DHCPV6Conn) writeTo(eth *layers.Ethernet, ip6 *layers.IPv6, udp *layers
 		return 0, err
 	}
 
+	err = udp.SetNetworkLayerForChecksum(ip6)
+	if err != nil {
+		return 0, err
+	}
+
 	err = udp.SerializeTo(buf, opts)
 	if err != nil {
 		return 0, err
@@ -223,7 +227,7 @@ func (c *DHCPV6Conn) writeTo(eth *layers.Ethernet, ip6 *layers.IPv6, udp *layers
 
 	pack := buf.Bytes()
 
-	//writeToPcap(pack)
+	writeToPcap(pack)
 
 	i, err := c.conn.WriteTo(pack, addr)
 
@@ -263,14 +267,15 @@ func ip6ToHwAddr(ipaddr net.IP) net.HardwareAddr {
 	return hwaddr
 }
 
-//func writeToPcap(pack []byte) {
-//  f, _ := os.Create("/tmp/pack")
-//  w := pcapgo.NewWriter(f)
-//  w.WriteFileHeader(math.MaxUint32, layers.LinkTypeEthernet)
-//  w.WritePacket(gopacket.CaptureInfo{
-//    Length: len(pack),
-//    CaptureLength: len(pack),
-//    Timestamp: time.Now(),
-//  }, pack)
-//  f.Close()
-//}
+func writeToPcap(pack []byte) {
+ //f, _ := os.Create("/tmp/pack")
+ //w := pcapgo.NewWriter(f)
+ //w.WriteFileHeader(math.MaxUint32, layers.LinkTypeEthernet)
+ //w.WritePacket(gopacket.CaptureInfo{
+ //  Length: len(pack),
+ //  CaptureLength: len(pack),
+ //  Timestamp: time.Now(),
+ //}, pack)
+ //f.Close()
+ //os.Exit(1)
+}

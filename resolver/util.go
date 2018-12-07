@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"github.com/cimnine/netbox-dhcp/dhcp/v6"
 	"net"
 	"time"
 
@@ -51,6 +52,41 @@ func NewClientInfoV4(dhcpConfig *config.DHCPConfig) *v4.ClientInfoV4 {
 	return &info
 }
 
-//func NewClientInfoV6(dhcpConfig *config.DHCPConfig) *v6.ClientInfoV6 {
-//
-//}
+func NewClientInfoV6(dhcpConfig *config.DHCPConfig) v6.ClientInfoV6 {
+	info := v6.ClientInfoV6{
+		//NextServer:   net.ParseIP(dhcpConfig.DefaultOptions.NextServer),
+		//BootFileName: dhcpConfig.DefaultOptions.BootFileName,
+	}
+
+	// TODO figure the correct default values out
+	d, err := time.ParseDuration(dhcpConfig.ReservationDuration)
+	if err != nil {
+		info.Timeouts.PreferredLifetime = 1 * time.Minute
+	} else {
+		info.Timeouts.PreferredLifetime = d
+	}
+
+	// TODO figure the correct default values out
+	d, err = time.ParseDuration(dhcpConfig.LeaseDuration)
+	if err != nil {
+		info.Timeouts.ValidLifetime = 6 * time.Hour
+	} else {
+		info.Timeouts.ValidLifetime = d
+	}
+
+	d, err = time.ParseDuration(dhcpConfig.T2Duration)
+	if err != nil {
+		info.Timeouts.T2RebindingTime = info.Timeouts.ValidLifetime / 2
+	} else {
+		info.Timeouts.T2RebindingTime = d
+	}
+
+	d, err = time.ParseDuration(dhcpConfig.T1Duration)
+	if err != nil {
+		info.Timeouts.T1RenewalTime = info.Timeouts.T2RebindingTime / 2
+	} else {
+		info.Timeouts.T1RenewalTime = d
+	}
+
+	return info
+}
